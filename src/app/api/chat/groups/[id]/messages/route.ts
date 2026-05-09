@@ -46,7 +46,7 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 }
 
 // POST /api/chat/groups/:id/messages → 201 ApiResponse<ChatMessage>
-// Body: { text }
+// Body: { text?, message_type?, media_url? }
 export async function POST(req: NextRequest, { params }: RouteContext) {
   let member
   try {
@@ -57,23 +57,40 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
   const { id: groupId } = await params
 
-  let body: { text: string }
+  let body: { text?: string; message_type?: string; media_url?: string }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ data: null, error: 'Body non valido' }, { status: 400 })
   }
 
-  const { text } = body
-  if (!text || text.trim() === '') {
-    return NextResponse.json({ data: null, error: 'Il testo è obbligatorio' }, { status: 400 })
+  const messageType = body.message_type ?? 'text'
+  const mediaUrl = body.media_url ?? null
+  const text = body.text ?? ''
+
+  if (messageType === 'text') {
+    if (!text || text.trim() === '') {
+      return NextResponse.json({ data: null, error: 'Il testo è obbligatorio' }, { status: 400 })
+    }
+  } else if (messageType === 'image' || messageType === 'document') {
+    if (!mediaUrl) {
+      return NextResponse.json({ data: null, error: 'media_url è obbligatorio' }, { status: 400 })
+    }
+  } else {
+    return NextResponse.json({ data: null, error: 'Tipo messaggio non valido' }, { status: 400 })
   }
 
   const db = createServerClient()
 
   const { data: message, error } = await db
     .from('chat_messages')
-    .insert({ group_id: groupId, author_id: member.id, text: text.trim() })
+    .insert({
+      group_id: groupId,
+      author_id: member.id,
+      text: text.trim(),
+      message_type: messageType,
+      media_url: mediaUrl,
+    })
     .select('*')
     .single()
 

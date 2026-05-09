@@ -5,13 +5,14 @@ export const BUCKETS = {
   avatars: 'avatars',
   posts: 'posts',
   albums: 'albums',
+  chat: 'chat',
 } as const
 
 export const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
 
 export const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
-type Bucket = 'avatars' | 'posts' | 'albums'
+type Bucket = 'avatars' | 'posts' | 'albums' | 'chat'
 
 /**
  * Uploads an image file to the specified Supabase storage bucket.

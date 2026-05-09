@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { uploadImage } from '@/lib/storage'
 import {
   ChatGroupWithDetails,
   ChatMessageWithAuthor,
@@ -90,6 +91,7 @@ type UseChatReturn = {
   hasMore: boolean
   loadMore: () => Promise<void>
   sendMessage: (text: string) => Promise<boolean>
+  sendMediaMessage: (file: File, messageType: 'image' | 'document') => Promise<boolean>
   markAsRead: () => Promise<void>
 }
 
@@ -195,5 +197,24 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
     }
   }, [groupId])
 
-  return { messages, isLoading, error, hasMore, loadMore, sendMessage, markAsRead }
+  const sendMediaMessage = useCallback(
+    async (file: File, messageType: 'image' | 'document'): Promise<boolean> => {
+      try {
+        const ext = file.name.split('.').pop() ?? 'bin'
+        const path = `${groupId}/${Date.now()}.${ext}`
+        const mediaUrl = await uploadImage('chat', file, path)
+        const res = await fetch(`/api/chat/groups/${groupId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message_type: messageType, media_url: mediaUrl, text: '' }),
+        })
+        return res.ok
+      } catch {
+        return false
+      }
+    },
+    [groupId]
+  )
+
+  return { messages, isLoading, error, hasMore, loadMore, sendMessage, sendMediaMessage, markAsRead }
 }

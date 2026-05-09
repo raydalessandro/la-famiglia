@@ -7,6 +7,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
 import { Avatar, Header } from '@/components/ui'
 
+const FAMILY_EMOJIS = ['❤️', '😂', '😍', '🎉', '👏', '🙏', '😊', '🥰', '😘', '👋', '😎', '🤣', '😢', '🤔', '💪', '✨']
+
 export default function ChatRoomPage() {
   const params = useParams()
   const groupId = params.id as string
@@ -14,17 +16,35 @@ export default function ChatRoomPage() {
   const { member } = useAuth()
   const { members } = useMembers()
   const { groups } = useChatGroups()
-  const { messages, isLoading, hasMore, loadMore, sendMessage } = useChat(groupId, members)
+  const { messages, isLoading, hasMore, loadMore, sendMessage, sendMediaMessage } = useChat(groupId, members)
 
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const emojiPickerRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const prevScrollHeight = useRef(0)
 
   const group = groups.find((g) => g.id === groupId)
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    if (!showEmojiPicker) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showEmojiPicker])
 
   // Auto-scroll to bottom on new messages (but not when loading older ones)
   useEffect(() => {
@@ -65,6 +85,22 @@ export default function ChatRoomPage() {
       e.preventDefault()
       handleSend()
     }
+  }
+
+  const handleEmojiClick = (emoji: string) => {
+    setText((prev) => prev + emoji)
+    setShowEmojiPicker(false)
+    textareaRef.current?.focus()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Reset input so the same file can be selected again
+    e.target.value = ''
+    setUploadingMedia(true)
+    await sendMediaMessage(file, 'image')
+    setUploadingMedia(false)
   }
 
   const formatTime = (iso: string) => {
@@ -184,13 +220,28 @@ export default function ChatRoomPage() {
 
                       {/* Bubble */}
                       <div
-                        className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed break-words ${
+                        className={`rounded-2xl text-sm leading-relaxed break-words overflow-hidden ${
                           isOwn
                             ? 'bg-[#E8A838] text-[#1a1a2e] font-medium rounded-tr-sm'
                             : 'bg-white/10 text-white rounded-tl-sm'
                         }`}
                       >
-                        {msg.text}
+                        {msg.message_type === 'image' && msg.media_url ? (
+                          <div>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={msg.media_url}
+                              alt="immagine"
+                              className="max-h-48 w-auto object-cover cursor-pointer rounded-xl"
+                              onClick={() => window.open(msg.media_url ?? '', '_blank')}
+                            />
+                            {msg.text && (
+                              <p className="px-3.5 pb-2 pt-1">{msg.text}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="px-3.5 py-2">{msg.text}</div>
+                        )}
                       </div>
 
                       {/* Timestamp */}
@@ -210,8 +261,60 @@ export default function ChatRoomPage() {
 
       {/* Input bar */}
       <div className="shrink-0 border-t border-white/10 bg-[#1a1a2e] px-3 py-3 pb-safe">
+        {/* Emoji picker overlay */}
+        {showEmojiPicker && (
+          <div
+            ref={emojiPickerRef}
+            className="mb-2 grid grid-cols-8 gap-1 rounded-2xl bg-white/10 p-2"
+          >
+            {FAMILY_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                onClick={() => handleEmojiClick(emoji)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-xl hover:bg-white/20 active:scale-90 transition-transform"
+                aria-label={emoji}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-end gap-2">
+          {/* Emoji toggle button */}
+          <button
+            onClick={() => setShowEmojiPicker((v) => !v)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-xl hover:bg-white/20 transition-colors active:scale-95"
+            aria-label="Emoji"
+          >
+            😊
+          </button>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          {/* Image attach button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingMedia}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-xl hover:bg-white/20 transition-colors active:scale-95 disabled:opacity-40"
+            aria-label="Allega immagine"
+          >
+            {uploadingMedia ? (
+              <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            ) : (
+              '📎'
+            )}
+          </button>
+
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}

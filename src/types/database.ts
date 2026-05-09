@@ -177,6 +177,8 @@ export type ChatMessage = {
   group_id: string
   author_id: string
   text: string
+  message_type: 'text' | 'image' | 'document'
+  media_url: string | null
   created_at: string
 }
 
@@ -348,7 +350,9 @@ export type CreateChatGroupInput = {
 }
 
 export type SendMessageInput = {
-  text: string
+  text?: string
+  message_type?: 'text' | 'image' | 'document'
+  media_url?: string
 }
 
 export type LoginInput = {
