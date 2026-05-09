@@ -3,9 +3,9 @@ import { Member, MemberPublic } from '../types/database'
 import crypto from 'crypto'
 import { cookies } from 'next/headers'
 
-const SESSION_COOKIE_NAME = 'famiglia_session'
-const SESSION_DURATION_DAYS = 30
-const PIN_SALT = 'famiglia_salt_2026'
+export const SESSION_COOKIE_NAME = 'famiglia_session'
+export const SESSION_DURATION_DAYS = 30
+export const PIN_SALT = 'famiglia_salt_2026'
 
 export function hashPin(pin: string): string {
   return crypto.createHash('sha256').update(PIN_SALT + pin).digest('hex')

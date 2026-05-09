@@ -25,20 +25,22 @@ export default function LoginPage() {
   ]
 
   useEffect(() => {
-    fetch('/api/setup')
-      .then((r) => r.json())
-      .then((result) => {
-        if (!result.data?.setup_completed) {
+    Promise.all([
+      fetch('/api/setup').then((r) => r.json()).catch(() => ({ data: { setup_completed: false } })),
+      fetch('/api/auth/members').then((r) => r.json()).catch(() => ({ data: [] })),
+    ])
+      .then(([setupResult, membersResult]) => {
+        const memberList = (membersResult.data ?? []) as MemberPublic[]
+        const setupCompleted = setupResult.data?.setup_completed ?? false
+
+        // Only redirect to setup when there are truly no members at all
+        if (memberList.length === 0 && !setupCompleted) {
           router.replace('/setup')
           return
         }
-        // Fetch members via public API route (works from any device)
-        fetch('/api/auth/members')
-          .then((r) => r.json())
-          .then((result) => {
-            setMembers((result.data ?? []) as MemberPublic[])
-            setIsLoading(false)
-          })
+
+        setMembers(memberList)
+        setIsLoading(false)
       })
       .catch(() => setIsLoading(false))
   }, [router])

@@ -214,7 +214,7 @@ function makeMockDb(overrides: Record<string, unknown> = {}) {
         b.select = vi.fn(() => {
           const inner: Record<string, (...args: unknown[]) => unknown> = {}
           inner.eq = vi.fn(() => inner)
-          inner.in = vi.fn(() => Promise.resolve(cfg.statusSelect))
+          inner.in = vi.fn(() => inner)
           inner.maybeSingle = vi.fn(() => Promise.resolve(cfg.statusSelect))
           inner.single = vi.fn(() => Promise.resolve(cfg.statusSelect))
           ;(inner as unknown as Promise<unknown>).then = (

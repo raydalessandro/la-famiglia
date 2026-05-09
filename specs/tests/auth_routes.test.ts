@@ -75,6 +75,7 @@ vi.mock('../../src/lib/auth', () => ({
   createSession: vi.fn(),
   deleteSession: vi.fn(),
   validateSession: vi.fn(),
+  getCurrentMember: vi.fn(),
   toPublicMember: vi.fn(),
 }))
 
@@ -108,6 +109,7 @@ const mockHashPin = vi.mocked(authLib.hashPin)
 const mockCreateSession = vi.mocked(authLib.createSession)
 const mockDeleteSession = vi.mocked(authLib.deleteSession)
 const mockValidateSession = vi.mocked(authLib.validateSession)
+const mockGetCurrentMember = vi.mocked(authLib.getCurrentMember)
 const mockToPublicMember = vi.mocked(authLib.toPublicMember)
 const mockCreateServerClient = vi.mocked(createServerClient)
 
@@ -116,14 +118,13 @@ const mockCreateServerClient = vi.mocked(createServerClient)
 // ---------------------------------------------------------------------------
 
 function makeSupabaseBuilder(data: unknown, error: unknown = null) {
-  const builder = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    single: vi.fn().mockResolvedValue({ data, error }),
-    insert: vi.fn().mockResolvedValue({ data, error }),
-    limit: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({ data, error }),
-  }
+  const builder: Record<string, unknown> = {}
+  builder.select = vi.fn().mockReturnValue(builder)
+  builder.eq = vi.fn().mockReturnValue(builder)
+  builder.single = vi.fn().mockResolvedValue({ data, error })
+  builder.insert = vi.fn().mockReturnValue(builder)
+  builder.limit = vi.fn().mockReturnValue(builder)
+  builder.maybeSingle = vi.fn().mockResolvedValue({ data, error })
   return builder
 }
 
@@ -283,7 +284,7 @@ describe('GET /api/auth (check session)', () => {
   })
 
   it('returns 200 with member when session is valid', async () => {
-    mockRequireAuth.mockResolvedValue(MOCK_MEMBER as any)
+    mockGetCurrentMember.mockResolvedValue(MOCK_PUBLIC_MEMBER as any)
 
     const req = makeRequest('GET')
     const res = await authGET(req as any)
@@ -295,13 +296,8 @@ describe('GET /api/auth (check session)', () => {
   })
 
   it('returns 401 when there is no valid session', async () => {
-    // requireAuth throws a Response with 401 when unauthenticated
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
+    // getCurrentMember returns null when unauthenticated
+    mockGetCurrentMember.mockResolvedValue(null)
 
     const req = makeRequest('GET')
     const res = await authGET(req as any)
@@ -361,14 +357,16 @@ describe('POST /api/setup', () => {
   })
 
   it('returns 200 with admin member on valid first-time setup', async () => {
-    // First call: no admin exists → setup not done
-    // Second call: insert new member succeeds
-    const noAdminClient = makeSupabaseClient(null)
-    const insertClient = makeSupabaseClient({ ...MOCK_MEMBER, is_admin: true })
-
-    mockCreateServerClient
-      .mockReturnValueOnce(noAdminClient)
-      .mockReturnValueOnce(insertClient)
+    // Route uses a single db instance: first single() call returns null (no admin),
+    // second single() call (after insert) returns the new member.
+    const adminMember = { ...MOCK_MEMBER, is_admin: true }
+    const builder = makeSupabaseBuilder(null)
+    ;(builder.single as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: adminMember, error: null })
+    mockCreateServerClient.mockReturnValue(
+      { from: vi.fn(() => builder) } as unknown as ReturnType<typeof createServerClient>
+    )
 
     const req = makeRequest('POST', {
       name: 'Mario Rossi',
@@ -451,12 +449,14 @@ describe('POST /api/setup', () => {
   })
 
   it('created member has is_admin: true', async () => {
-    const noAdminClient = makeSupabaseClient(null)
-    const insertClient = makeSupabaseClient({ ...MOCK_MEMBER, is_admin: true })
-
-    mockCreateServerClient
-      .mockReturnValueOnce(noAdminClient)
-      .mockReturnValueOnce(insertClient)
+    const adminMember = { ...MOCK_MEMBER, is_admin: true }
+    const builder = makeSupabaseBuilder(null)
+    ;(builder.single as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: adminMember, error: null })
+    mockCreateServerClient.mockReturnValue(
+      { from: vi.fn(() => builder) } as unknown as ReturnType<typeof createServerClient>
+    )
 
     const req = makeRequest('POST', { name: 'Mario Rossi', pin: '1234' })
     const res = await setupPOST(req as any)
@@ -467,12 +467,14 @@ describe('POST /api/setup', () => {
   })
 
   it('response member does not include pin_hash', async () => {
-    const noAdminClient = makeSupabaseClient(null)
-    const insertClient = makeSupabaseClient({ ...MOCK_MEMBER, is_admin: true })
-
-    mockCreateServerClient
-      .mockReturnValueOnce(noAdminClient)
-      .mockReturnValueOnce(insertClient)
+    const adminMember = { ...MOCK_MEMBER, is_admin: true }
+    const builder = makeSupabaseBuilder(null)
+    ;(builder.single as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: adminMember, error: null })
+    mockCreateServerClient.mockReturnValue(
+      { from: vi.fn(() => builder) } as unknown as ReturnType<typeof createServerClient>
+    )
 
     const req = makeRequest('POST', { name: 'Mario Rossi', pin: '1234' })
     const res = await setupPOST(req as any)

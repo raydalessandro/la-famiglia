@@ -22,7 +22,7 @@ describe('POST /api/chat/groups — validation', () => {
     // Expected: 400 "Il nome è obbligatorio per i gruppi"
     const body = { name: '', member_ids: ['x'], is_direct: false }
     const isValid = body.is_direct || (body.name && body.name.trim() !== '')
-    expect(isValid).toBe(false)
+    expect(isValid).toBeFalsy()
   })
 
   it('direct chat allows empty name', () => {

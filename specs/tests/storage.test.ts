@@ -21,12 +21,12 @@ const mockSupabase = {
   },
 }
 
-vi.mock('@/lib/supabase/server', () => ({
+vi.mock('@/lib/supabase/client', () => ({
   createServerClient: vi.fn(() => mockSupabase),
 }))
 
 // We also cover the case where createServerClient may live in a sibling path
-vi.mock('@/lib/supabase', () => ({
+vi.mock('@/lib/supabase/server', () => ({
   createServerClient: vi.fn(() => mockSupabase),
 }))
 
@@ -107,10 +107,14 @@ describe('Interface – exports', () => {
   })
 
   it('compressImage is async (returns a Promise)', () => {
-    // compressImage requires browser APIs – tested in detail in its own section
-    // Here we just check the return type when browser env stubs are present
+    // compressImage requires browser APIs – tested in detail in its own section.
+    // Stub URL.createObjectURL to throw immediately so the Promise rejects fast
+    // (avoids a 5s timeout waiting for Image onload in a non-browser environment).
+    const origCreateObjectURL = URL.createObjectURL
+    URL.createObjectURL = vi.fn(() => { throw new Error('stub: no browser') })
     const file = makeFile('photo.jpg', 'image/jpeg', 1000)
     const result = storage.compressImage(file)
+    URL.createObjectURL = origCreateObjectURL
     expect(result).toBeInstanceOf(Promise)
     return result.catch(() => {})
   })
@@ -312,6 +316,32 @@ describe('compressImage', () => {
   let originalCreateElement: typeof document.createElement
   let originalCreateObjectURL: typeof URL.createObjectURL
 
+  // Helper to build a mock HTMLImageElement that fires onload synchronously.
+  // Must be called from a real class constructor (not arrow fn) for `new Image()` to work.
+  function makeMockImageInstance(naturalWidth = 800, naturalHeight = 600) {
+    const img: Partial<HTMLImageElement> & { _src: string } = {
+      _src: '',
+      naturalWidth,
+      naturalHeight,
+      width: naturalWidth,
+      height: naturalHeight,
+      onload: null as unknown as GlobalEventHandlers['onload'],
+      onerror: null as unknown as GlobalEventHandlers['onerror'],
+    }
+    Object.defineProperty(img, 'src', {
+      set(value: string) {
+        img._src = value
+        if (typeof img.onload === 'function') {
+          ;(img.onload as () => void)()
+        }
+      },
+      get() {
+        return img._src
+      },
+    })
+    return img
+  }
+
   beforeEach(() => {
     // Save originals
     originalImage = globalThis.Image
@@ -322,31 +352,8 @@ describe('compressImage', () => {
     URL.createObjectURL = vi.fn(() => 'blob:mock-url')
 
     // Stub HTMLImageElement via globalThis.Image constructor
-    // The stub fires onload synchronously so that async code resolves immediately.
-    const MockImage = vi.fn().mockImplementation(() => {
-      const img: Partial<HTMLImageElement> & { _src: string } = {
-        _src: '',
-        naturalWidth: 800,
-        naturalHeight: 600,
-        width: 800,
-        height: 600,
-        onload: null as unknown as GlobalEventHandlers['onload'],
-        onerror: null as unknown as GlobalEventHandlers['onerror'],
-      }
-      // Trigger onload synchronously when src is set
-      Object.defineProperty(img, 'src', {
-        set(value: string) {
-          img._src = value
-          if (typeof img.onload === 'function') {
-            ;(img.onload as () => void)()
-          }
-        },
-        get() {
-          return img._src
-        },
-      })
-      return img
-    })
+    // Must be a real class (not vi.fn() with arrow impl) so `new Image()` works.
+    class MockImage { constructor() { return makeMockImageInstance(800, 600) as unknown as MockImage } }
     globalThis.Image = MockImage as unknown as typeof Image
 
     // Stub canvas & toBlob
@@ -413,29 +420,7 @@ describe('compressImage', () => {
 
   it('does not upscale images smaller than maxWidth', async () => {
     // Set stub image dimensions to 400x300 (< default 1920 maxWidth)
-    const MockSmallImage = vi.fn().mockImplementation(() => {
-      const img: Partial<HTMLImageElement> & { _src: string } = {
-        _src: '',
-        naturalWidth: 400,
-        naturalHeight: 300,
-        width: 400,
-        height: 300,
-        onload: null as unknown as GlobalEventHandlers['onload'],
-        onerror: null as unknown as GlobalEventHandlers['onerror'],
-      }
-      Object.defineProperty(img, 'src', {
-        set(value: string) {
-          img._src = value
-          if (typeof img.onload === 'function') {
-            ;(img.onload as () => void)()
-          }
-        },
-        get() {
-          return img._src
-        },
-      })
-      return img
-    })
+    class MockSmallImage { constructor() { return makeMockImageInstance(400, 300) as unknown as MockSmallImage } }
     globalThis.Image = MockSmallImage as unknown as typeof Image
 
     // Track canvas dimensions set by compressImage
@@ -474,29 +459,7 @@ describe('compressImage', () => {
 
   it('scales down images wider than maxWidth', async () => {
     // Stub image that is wider than the custom maxWidth of 640
-    const MockWideImage = vi.fn().mockImplementation(() => {
-      const img: Partial<HTMLImageElement> & { _src: string } = {
-        _src: '',
-        naturalWidth: 1280,
-        naturalHeight: 720,
-        width: 1280,
-        height: 720,
-        onload: null as unknown as GlobalEventHandlers['onload'],
-        onerror: null as unknown as GlobalEventHandlers['onerror'],
-      }
-      Object.defineProperty(img, 'src', {
-        set(value: string) {
-          img._src = value
-          if (typeof img.onload === 'function') {
-            ;(img.onload as () => void)()
-          }
-        },
-        get() {
-          return img._src
-        },
-      })
-      return img
-    })
+    class MockWideImage { constructor() { return makeMockImageInstance(1280, 720) as unknown as MockWideImage } }
     globalThis.Image = MockWideImage as unknown as typeof Image
 
     let capturedWidth = 0

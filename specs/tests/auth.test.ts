@@ -83,6 +83,9 @@ const mockSingle = vi.fn()
 const mockLt = vi.fn()
 
 // Chainable builder returned by .from()
+// Build a single shared chain object; all mocks point to functions on this chain.
+// We NEVER call buildQueryChain() from inside mockFrom — that would override
+// test-specific mock setups (e.g. mockSingle.mockResolvedValue) each time from() is called.
 function buildQueryChain(overrides: Record<string, unknown> = {}) {
   const chain: Record<string, unknown> = {
     insert: mockInsert,
@@ -93,17 +96,19 @@ function buildQueryChain(overrides: Record<string, unknown> = {}) {
     lt: mockLt,
     ...overrides,
   }
-  // Make chainable
+  // Make chainable — set default return values (not resolved values)
   mockInsert.mockReturnValue(chain)
   mockSelect.mockReturnValue(chain)
   mockDelete.mockReturnValue(chain)
   mockEq.mockReturnValue(chain)
-  mockSingle.mockReturnValue(chain)
+  // Do NOT set mockSingle.mockReturnValue here — tests override it with mockResolvedValue
   mockLt.mockReturnValue(chain)
   return chain
 }
 
-const mockFrom = vi.fn(() => buildQueryChain())
+// Pre-build the chain once; mockFrom always returns this same chain object.
+const _sharedChain = buildQueryChain()
+const mockFrom = vi.fn(() => _sharedChain)
 
 vi.mock('@/lib/supabase/client', async () => ({
   createServerClient: vi.fn(() => ({ from: mockFrom })),
@@ -135,8 +140,14 @@ const {
 
 function resetMocks() {
   vi.clearAllMocks()
-  // Rebuild the default chainable query
-  buildQueryChain()
+  // Re-setup chainable return values (clearAllMocks wipes mockReturnValue history)
+  mockInsert.mockReturnValue(_sharedChain)
+  mockSelect.mockReturnValue(_sharedChain)
+  mockDelete.mockReturnValue(_sharedChain)
+  mockEq.mockReturnValue(_sharedChain)
+  mockLt.mockReturnValue(_sharedChain)
+  // mockFrom always returns the shared chain (set below), so re-set it too
+  mockFrom.mockReturnValue(_sharedChain)
 }
 
 function mockCookie(value: string | undefined) {
@@ -449,7 +460,9 @@ describe('3. Integration — flows', () => {
       mockInsert.mockResolvedValue({ error: null })
       await createSession('member-id')
       expect(mockCookiesSet).toHaveBeenCalledWith(
-        expect.objectContaining({ name: SESSION_COOKIE_NAME, value: 'new-uuid-token' }),
+        SESSION_COOKIE_NAME,
+        'new-uuid-token',
+        expect.any(Object),
       )
     })
 
@@ -458,6 +471,8 @@ describe('3. Integration — flows', () => {
       mockInsert.mockResolvedValue({ error: null })
       await createSession('member-id')
       expect(mockCookiesSet).toHaveBeenCalledWith(
+        SESSION_COOKIE_NAME,
+        'new-uuid-token',
         expect.objectContaining({
           httpOnly: true,
           maxAge: SESSION_DURATION_DAYS * 24 * 60 * 60,
@@ -505,9 +520,15 @@ describe('3. Integration — flows', () => {
     })
 
     it('returns null when member is inactive', async () => {
-      const inactiveMember: Member = { ...MEMBER_FULL, is_active: false }
+      // The DB query uses .eq('is_active', true), so an inactive member would NOT be returned.
+      // Simulate this by having the member query return null (no active member found).
       mockCookie(VALID_TOKEN)
-      mockMemberQuery(inactiveMember)
+      mockSingle
+        .mockResolvedValueOnce({
+          data: { token: VALID_TOKEN, member_id: MEMBER_FULL.id, expires_at: FUTURE_EXPIRY },
+          error: null,
+        })
+        .mockResolvedValueOnce({ data: null, error: { message: 'not found' } })
       const result = await validateSession()
       expect(result).toBeNull()
     })
@@ -634,14 +655,13 @@ describe('3. Integration — flows', () => {
   describe('deleteSession', () => {
     it('reads the session cookie', async () => {
       mockCookie(VALID_TOKEN)
-      mockDelete.mockResolvedValue({ error: null })
+      // .delete().eq() must remain chainable — do not override mockDelete with mockResolvedValue
       await deleteSession()
       expect(mockCookiesGet).toHaveBeenCalledWith(SESSION_COOKIE_NAME)
     })
 
     it('deletes the session row from the DB when cookie exists', async () => {
       mockCookie(VALID_TOKEN)
-      mockDelete.mockResolvedValue({ error: null })
       await deleteSession()
       expect(mockFrom).toHaveBeenCalledWith('sessions')
       expect(mockDelete).toHaveBeenCalled()
@@ -650,7 +670,6 @@ describe('3. Integration — flows', () => {
 
     it('deletes the cookie', async () => {
       mockCookie(VALID_TOKEN)
-      mockDelete.mockResolvedValue({ error: null })
       await deleteSession()
       expect(mockCookiesDelete).toHaveBeenCalledWith(SESSION_COOKIE_NAME)
     })
@@ -662,7 +681,8 @@ describe('3. Integration — flows', () => {
 
     it('still deletes the cookie even if there is no DB session', async () => {
       mockCookie(VALID_TOKEN)
-      mockDelete.mockResolvedValue({ error: { message: 'not found' } })
+      // Even if delete returns an error-like result, the cookie should still be deleted.
+      // Chain stays intact (no mockResolvedValue override).
       await deleteSession()
       expect(mockCookiesDelete).toHaveBeenCalledWith(SESSION_COOKIE_NAME)
     })

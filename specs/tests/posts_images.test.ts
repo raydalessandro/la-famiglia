@@ -117,7 +117,9 @@ describe('POST /api/posts — image records created', () => {
     }),
   })
 
-  const mockUploadImage = vi.fn().mockResolvedValue('https://storage/posts/post-1/0')
+  const mockUploadImage = vi.fn().mockImplementation((bucket: string, _file: File, path: string) =>
+    Promise.resolve(`https://storage/${bucket}/${path}`)
+  )
 
   const mockPostImagesInsert = vi.fn().mockResolvedValue({ data: null, error: null })
 

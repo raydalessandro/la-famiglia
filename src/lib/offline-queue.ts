@@ -1,9 +1,9 @@
 import { OfflineOperation } from '../types/database'
 
 // Constants
-const DB_NAME = 'famiglia_offline'
-const STORE_NAME = 'operations'
-const MAX_RETRIES = 3
+export const DB_NAME = 'famiglia_offline'
+export const STORE_NAME = 'operations'
+export const MAX_RETRIES = 3
 
 // Helper: openDB
 function openDB(): Promise<IDBDatabase> {
