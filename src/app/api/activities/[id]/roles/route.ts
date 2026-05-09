@@ -44,14 +44,34 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResponse<ActivityRole[]>>> {
+  let currentMember
   try {
-    await requireAuth()
+    currentMember = await requireAuth()
   } catch (res) {
     return res as NextResponse<ApiResponse<ActivityRole[]>>
   }
 
   const { id } = await params
   const db = createServerClient()
+
+  // Authorization: editing roles is part of editing the activity, so only
+  // the creator OR an admin can perform this action.
+  const { data: existing, error: existingError } = await db
+    .from('activities')
+    .select('id, created_by')
+    .eq('id', id)
+    .single()
+
+  if (existingError || !existing) {
+    return NextResponse.json({ data: null, error: 'Attività non trovata' }, { status: 404 })
+  }
+
+  if (existing.created_by !== currentMember.id && !currentMember.is_admin) {
+    return NextResponse.json(
+      { data: null, error: 'Non autorizzato a modificare i ruoli di questa attività' },
+      { status: 403 }
+    )
+  }
 
   let body: { roles: { member_id: string; role_label: string }[] }
   try {

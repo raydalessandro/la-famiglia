@@ -1,27 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
+import { getWeekStart } from '@/lib/dates'
 import {
   ActivityWithDetails,
   CreateActivityInput,
   ApiResponse,
   MemberPublic,
 } from '@/types/database'
-
-function getWeekStartFromString(weekStartParam: string | null): string {
-  if (weekStartParam && /^\d{4}-\d{2}-\d{2}$/.test(weekStartParam)) {
-    return weekStartParam
-  }
-  const today = new Date()
-  const dayOfWeek = today.getDay()
-  const diff = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek
-  const monday = new Date(today)
-  monday.setDate(today.getDate() + diff)
-  const y = monday.getFullYear()
-  const m = monday.getMonth()
-  const d = monday.getDate()
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse<ApiResponse<ActivityWithDetails[]>>> {
   try {
@@ -32,7 +18,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
 
   const db = createServerClient()
   const { searchParams } = new URL(request.url)
-  const weekStart = getWeekStartFromString(searchParams.get('week_start'))
+  const weekStart = getWeekStart(searchParams.get('week_start'))
 
   const { data: activities, error: activitiesError } = await db
     .from('activities')

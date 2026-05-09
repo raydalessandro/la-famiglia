@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
+import { Member } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 // PATCH /api/tasks/:id → ApiResponse<Task>
 // Body: { title?, description?, due_date?, is_completed?, assignee_ids? }
+// Authorization:
+//   - creator or admin: full edit (any field)
+//   - assignee (non-creator, non-admin): may only update is_completed
+//   - anyone else: 403
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
-  let member
+  let member: Member
   try {
     member = await requireAuth()
   } catch (response) {
@@ -32,6 +37,56 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
   const { assignee_ids, is_completed, ...fields } = body
 
   const db = createServerClient()
+
+  // Fetch task and current assignees to authorize
+  const { data: existing, error: existingError } = await db
+    .from('tasks')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (existingError || !existing) {
+    return NextResponse.json({ data: null, error: 'Compito non trovato' }, { status: 404 })
+  }
+
+  const { data: assigneeRows } = await db
+    .from('task_assignees')
+    .select('member_id')
+    .eq('task_id', id)
+
+  const assigneeIds = (assigneeRows ?? []).map(
+    (r: { member_id: string }) => r.member_id
+  )
+
+  const isCreator = existing.created_by === member.id
+  const isAssignee = assigneeIds.includes(member.id)
+  const isAdmin = member.is_admin === true
+
+  if (!isCreator && !isAssignee && !isAdmin) {
+    return NextResponse.json({ data: null, error: 'Accesso negato' }, { status: 403 })
+  }
+
+  // Assignees who are not creator/admin may only update `is_completed`.
+  // Any attempt to change other fields (title/description/due_date/assignee_ids)
+  // is forbidden for them.
+  if (!isCreator && !isAdmin) {
+    const triesToEditOtherField =
+      fields.title !== undefined ||
+      fields.description !== undefined ||
+      fields.due_date !== undefined ||
+      assignee_ids !== undefined
+    if (triesToEditOtherField) {
+      return NextResponse.json({ data: null, error: 'Accesso negato' }, { status: 403 })
+    }
+  }
+
+  // Validate title if provided
+  if (fields.title !== undefined) {
+    const trimmed = fields.title.trim()
+    if (trimmed.length === 0) {
+      return NextResponse.json({ data: null, error: 'Titolo obbligatorio' }, { status: 400 })
+    }
+  }
 
   const updatePayload: Record<string, unknown> = {}
   if (fields.title !== undefined) updatePayload.title = fields.title.trim()
@@ -62,11 +117,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     }
     task = data
   } else {
-    const { data, error } = await db.from('tasks').select('*').eq('id', id).single()
-    if (error || !data) {
-      return NextResponse.json({ data: null, error: 'Compito non trovato' }, { status: 404 })
-    }
-    task = data
+    task = existing
   }
 
   if (assignee_ids !== undefined) {
@@ -94,15 +145,33 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 }
 
 // DELETE /api/tasks/:id → ApiResponse<null>
+// Authorization: only creator or admin can delete.
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
+  let member: Member
   try {
-    await requireAuth()
+    member = await requireAuth()
   } catch (response) {
     return response as Response
   }
 
   const { id } = await params
   const db = createServerClient()
+
+  // Fetch task to check authorization
+  const { data: task, error: fetchError } = await db
+    .from('tasks')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (fetchError || !task) {
+    return NextResponse.json({ data: null, error: 'Compito non trovato' }, { status: 404 })
+  }
+
+  // Check authorization: must be creator or admin
+  if (task.created_by !== member.id && !member.is_admin) {
+    return NextResponse.json({ data: null, error: 'Accesso negato' }, { status: 403 })
+  }
 
   const { error } = await db.from('tasks').delete().eq('id', id)
 

@@ -119,7 +119,7 @@ export function useActivities(): UseActivitiesReturn {
       const res = await fetch(`/api/activities/${activityId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...input, week_start: getWeekStart() }),
       })
       const data: ApiResponse<unknown> = await res.json()
       if (!res.ok || data.error) {
@@ -138,7 +138,7 @@ export function useActivities(): UseActivitiesReturn {
       const res = await fetch(`/api/activities/${activityId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'pending' }),
+        body: JSON.stringify({ status: 'pending', week_start: getWeekStart() }),
       })
       const data: ApiResponse<unknown> = await res.json()
       if (!res.ok || data.error) {

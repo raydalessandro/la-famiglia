@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
+import { Member } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -35,9 +36,11 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
 // PATCH /api/events/:id → ApiResponse<Event>
 // Body: { title?, event_date?, description?, location?, participant_ids? }
+// Authorization: only creator or admin can update.
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
+  let member: Member
   try {
-    await requireAuth()
+    member = await requireAuth()
   } catch (response) {
     return response as Response
   }
@@ -61,6 +64,30 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 
   const db = createServerClient()
 
+  // Fetch existing event to check authorization
+  const { data: existing, error: existingError } = await db
+    .from('events')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (existingError || !existing) {
+    return NextResponse.json({ data: null, error: 'Evento non trovato' }, { status: 404 })
+  }
+
+  // Check authorization: must be creator or admin
+  if (existing.created_by !== member.id && !member.is_admin) {
+    return NextResponse.json({ data: null, error: 'Accesso negato' }, { status: 403 })
+  }
+
+  // Validate title if provided
+  if (fields.title !== undefined) {
+    const trimmed = fields.title.trim()
+    if (trimmed.length === 0) {
+      return NextResponse.json({ data: null, error: 'Titolo obbligatorio' }, { status: 400 })
+    }
+  }
+
   const updatePayload: Record<string, unknown> = {}
   if (fields.title !== undefined) updatePayload.title = fields.title.trim()
   if (fields.event_date !== undefined) updatePayload.event_date = fields.event_date
@@ -81,11 +108,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     }
     event = data
   } else {
-    const { data, error } = await db.from('events').select('*').eq('id', id).single()
-    if (error || !data) {
-      return NextResponse.json({ data: null, error: 'Evento non trovato' }, { status: 404 })
-    }
-    event = data
+    event = existing
   }
 
   if (participant_ids !== undefined) {
@@ -106,15 +129,33 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 }
 
 // DELETE /api/events/:id → ApiResponse<null>
+// Authorization: only creator or admin can delete.
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
+  let member: Member
   try {
-    await requireAuth()
+    member = await requireAuth()
   } catch (response) {
     return response as Response
   }
 
   const { id } = await params
   const db = createServerClient()
+
+  // Fetch event to check authorization
+  const { data: event, error: fetchError } = await db
+    .from('events')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (fetchError || !event) {
+    return NextResponse.json({ data: null, error: 'Evento non trovato' }, { status: 404 })
+  }
+
+  // Check authorization: must be creator or admin
+  if (event.created_by !== member.id && !member.is_admin) {
+    return NextResponse.json({ data: null, error: 'Accesso negato' }, { status: 403 })
+  }
 
   const { error } = await db.from('events').delete().eq('id', id)
 

@@ -2,20 +2,39 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { deleteImage } from '@/lib/storage'
+import { Member } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 // DELETE /api/albums/:id → ApiResponse<null>
-// Fetches all photos, deletes their images from storage, then deletes the album (cascade)
+// Fetches all photos, deletes their images from storage, then deletes the album (cascade).
+// Authorization: only creator or admin can delete.
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
+  let member: Member
   try {
-    await requireAuth()
+    member = await requireAuth()
   } catch (response) {
     return response as Response
   }
 
   const { id } = await params
   const db = createServerClient()
+
+  // Fetch album to check authorization
+  const { data: album, error: albumError } = await db
+    .from('albums')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (albumError || !album) {
+    return NextResponse.json({ data: null, error: 'Album non trovato' }, { status: 404 })
+  }
+
+  // Check authorization: must be creator or admin
+  if (album.created_by !== member.id && !member.is_admin) {
+    return NextResponse.json({ data: null, error: 'Accesso negato' }, { status: 403 })
+  }
 
   // Fetch all photos so we can delete their storage objects
   const { data: photos, error: photosError } = await db

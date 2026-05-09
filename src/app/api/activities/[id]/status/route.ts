@@ -2,26 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { notifyMembers } from '@/lib/notifications'
+import { getWeekStart } from '@/lib/dates'
 import {
   ActivityWeeklyStatus,
   SetWeeklyStatusInput,
   ApiResponse,
 } from '@/types/database'
-
-function getWeekStartFromString(weekStartParam: string | null): string {
-  if (weekStartParam && /^\d{4}-\d{2}-\d{2}$/.test(weekStartParam)) {
-    return weekStartParam
-  }
-  const today = new Date()
-  const dayOfWeek = today.getDay()
-  const diff = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek
-  const monday = new Date(today)
-  monday.setDate(today.getDate() + diff)
-  const y = monday.getFullYear()
-  const m = monday.getMonth()
-  const d = monday.getDate()
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
 
 export async function POST(
   request: NextRequest,
@@ -45,7 +31,7 @@ export async function POST(
   }
 
   const { status, modified_notes, week_start: weekStartParam } = body
-  const weekStart = getWeekStartFromString(weekStartParam ?? null)
+  const weekStart = getWeekStart(weekStartParam ?? null)
 
   if (!status) {
     return NextResponse.json({ data: null, error: 'Il campo status è obbligatorio' }, { status: 400 })
@@ -60,6 +46,22 @@ export async function POST(
 
   if (activityError || !activity) {
     return NextResponse.json({ data: null, error: 'Attività non trovata' }, { status: 404 })
+  }
+
+  // Authorization: only participants OR admin can change weekly status.
+  const { data: participantsForAuth } = await db
+    .from('activity_participants')
+    .select('member_id')
+    .eq('activity_id', id)
+
+  const participantIds = (participantsForAuth ?? []).map((row) => row.member_id as string)
+  const isParticipant = participantIds.includes(currentMember.id)
+
+  if (!isParticipant && !currentMember.is_admin) {
+    return NextResponse.json(
+      { data: null, error: 'Non autorizzato a modificare lo stato di questa attività' },
+      { status: 403 }
+    )
   }
 
   // If status='pending' → DELETE the weekly_status record (reset)
@@ -97,17 +99,10 @@ export async function POST(
     return NextResponse.json({ data: null, error: upsertError?.message ?? 'Errore upsert' }, { status: 500 })
   }
 
-  // Notify participants on status change
-  const { data: participantsData } = await db
-    .from('activity_participants')
-    .select('member_id')
-    .eq('activity_id', id)
+  // Notify participants on status change (excluding the actor).
+  const notifyTargets = participantIds.filter((mid) => mid !== currentMember.id)
 
-  const participantIds = (participantsData ?? [])
-    .map((row) => row.member_id as string)
-    .filter((mid) => mid !== currentMember.id)
-
-  if (participantIds.length > 0) {
+  if (notifyTargets.length > 0) {
     const statusLabels: Record<string, string> = {
       confirmed: 'confermata',
       skipped: 'saltata',
@@ -119,7 +114,7 @@ export async function POST(
       : `${activity.title} è ${statusLabel} per questa settimana`
 
     await notifyMembers(
-      participantIds,
+      notifyTargets,
       'activity_reminder',
       `Attività ${statusLabel}`,
       notifyBody,

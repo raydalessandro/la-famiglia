@@ -1,27 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
+import { getWeekStart } from '@/lib/dates'
 import {
   ActivityWithDetails,
   UpdateActivityInput,
   ApiResponse,
   MemberPublic,
 } from '@/types/database'
-
-function getWeekStartFromString(weekStartParam: string | null): string {
-  if (weekStartParam && /^\d{4}-\d{2}-\d{2}$/.test(weekStartParam)) {
-    return weekStartParam
-  }
-  const today = new Date()
-  const dayOfWeek = today.getDay()
-  const diff = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek
-  const monday = new Date(today)
-  monday.setDate(today.getDate() + diff)
-  const y = monday.getFullYear()
-  const m = monday.getMonth()
-  const d = monday.getDate()
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
 
 async function fetchActivityWithDetails(
   db: ReturnType<typeof createServerClient>,
@@ -86,7 +72,7 @@ export async function GET(
   const { id } = await params
   const db = createServerClient()
   const { searchParams } = new URL(request.url)
-  const weekStart = getWeekStartFromString(searchParams.get('week_start'))
+  const weekStart = getWeekStart(searchParams.get('week_start'))
 
   const result = await fetchActivityWithDetails(db, id, weekStart)
 
@@ -101,14 +87,33 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResponse<ActivityWithDetails>>> {
+  let currentMember
   try {
-    await requireAuth()
+    currentMember = await requireAuth()
   } catch (res) {
     return res as NextResponse<ApiResponse<ActivityWithDetails>>
   }
 
   const { id } = await params
   const db = createServerClient()
+
+  // Authorization: only the creator OR an admin can modify an activity.
+  const { data: existing, error: existingError } = await db
+    .from('activities')
+    .select('id, created_by')
+    .eq('id', id)
+    .single()
+
+  if (existingError || !existing) {
+    return NextResponse.json({ data: null, error: 'Attività non trovata' }, { status: 404 })
+  }
+
+  if (existing.created_by !== currentMember.id && !currentMember.is_admin) {
+    return NextResponse.json(
+      { data: null, error: 'Non autorizzato a modificare questa attività' },
+      { status: 403 }
+    )
+  }
 
   let body: UpdateActivityInput
   try {
@@ -176,7 +181,7 @@ export async function PATCH(
   }
 
   const { searchParams } = new URL(request.url)
-  const weekStart = getWeekStartFromString(searchParams.get('week_start'))
+  const weekStart = getWeekStart(searchParams.get('week_start'))
   const result = await fetchActivityWithDetails(db, id, weekStart)
 
   if (!result) {
@@ -190,14 +195,33 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ApiResponse<null>>> {
+  let currentMember
   try {
-    await requireAuth()
+    currentMember = await requireAuth()
   } catch (res) {
     return res as NextResponse<ApiResponse<null>>
   }
 
   const { id } = await params
   const db = createServerClient()
+
+  // Authorization: only the creator OR an admin can delete an activity.
+  const { data: existing, error: existingError } = await db
+    .from('activities')
+    .select('id, created_by')
+    .eq('id', id)
+    .single()
+
+  if (existingError || !existing) {
+    return NextResponse.json({ data: null, error: 'Attività non trovata' }, { status: 404 })
+  }
+
+  if (existing.created_by !== currentMember.id && !currentMember.is_admin) {
+    return NextResponse.json(
+      { data: null, error: 'Non autorizzato a eliminare questa attività' },
+      { status: 403 }
+    )
+  }
 
   const { error } = await db
     .from('activities')

@@ -163,7 +163,11 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
         color: '#000000',
       }
       const enriched: ChatMessageWithAuthor = { ...msg, author }
-      setMessages((prev) => [...prev, enriched])
+      setMessages((prev) => {
+        // Dedup: avoid duplicates from realtime reconnects / backfills
+        if (prev.some((m) => m.id === enriched.id)) return prev
+        return [...prev, enriched]
+      })
     },
     `group_id=eq.${groupId}`,
     true
