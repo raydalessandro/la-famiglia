@@ -1,0 +1,367 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/hooks/useAuth'
+import { useMembers } from '@/hooks/useMembers'
+import { Avatar } from '@/components/ui'
+
+const EMOJI_OPTIONS = [
+  '😊','😎','🥳','🤩','😴','🧑','👩','👨','🧒','👧','👦',
+  '🧓','👴','👵','🦁','🐯','🐻','🐼','🦊','🐨','🦋','🌟',
+  '🍕','🎸','⚽','🏊','🌺','🌙','☀️','🌈',
+]
+
+export default function SettingsPage() {
+  const router = useRouter()
+  const { member, logout, refreshAuth } = useAuth()
+  const { refetch } = useMembers()
+
+  const [bio, setBio] = useState(member?.bio ?? '')
+  const [avatarEmoji, setAvatarEmoji] = useState(member?.avatar_emoji ?? '')
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+
+  const [currentPin, setCurrentPin] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [pinError, setPinError] = useState('')
+
+  const [notifyPush, setNotifyPush] = useState(false)
+  const [notifyTelegram, setNotifyTelegram] = useState(false)
+  const [telegramChatId, setTelegramChatId] = useState('')
+
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  // Fetch full member data (including notification prefs) on mount
+  useEffect(() => {
+    if (!member) return
+    setBio(member.bio ?? '')
+    setAvatarEmoji(member.avatar_emoji ?? '')
+
+    // Fetch full member (includes notify_push, notify_telegram, telegram_chat_id)
+    fetch(`/api/members/${member.id}`)
+      .then((r) => r.json())
+      .then((result) => {
+        if (result.data) {
+          setNotifyPush(result.data.notify_push ?? false)
+          setNotifyTelegram(result.data.notify_telegram ?? false)
+          setTelegramChatId(result.data.telegram_chat_id ?? '')
+        }
+      })
+      .catch(() => {})
+  }, [member])
+
+  if (!member) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-[#1a1a2e]">
+        <div className="h-8 w-8 rounded-full border-2 border-[#E8A838] border-t-transparent animate-spin" />
+      </div>
+    )
+  }
+
+  const validatePin = () => {
+    if (!currentPin && !newPin && !confirmPin) return true // Not changing PIN
+    if (!currentPin) { setPinError('Inserisci il PIN corrente'); return false }
+    if (newPin.length < 4) { setPinError('Il nuovo PIN deve avere almeno 4 cifre'); return false }
+    if (!/^\d+$/.test(newPin)) { setPinError('Il PIN deve contenere solo numeri'); return false }
+    if (newPin !== confirmPin) { setPinError('I PIN non corrispondono'); return false }
+    return true
+  }
+
+  const handleSave = async () => {
+    setPinError('')
+    setSaveError('')
+    setSaveSuccess(false)
+
+    if (!validatePin()) return
+
+    setSaving(true)
+
+    const body: Record<string, unknown> = {
+      bio,
+      avatar_emoji: avatarEmoji || null,
+      notify_push: notifyPush,
+      notify_telegram: notifyTelegram,
+      telegram_chat_id: notifyTelegram ? telegramChatId.trim() || null : null,
+    }
+
+    if (currentPin && newPin) {
+      body.current_pin = currentPin
+      body.new_pin = newPin
+    }
+
+    try {
+      const res = await fetch(`/api/members/${member.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (res.ok) {
+        setSaveSuccess(true)
+        setCurrentPin('')
+        setNewPin('')
+        setConfirmPin('')
+        await refreshAuth()
+        await refetch()
+        setTimeout(() => setSaveSuccess(false), 3000)
+      } else {
+        const result = await res.json()
+        setSaveError(result.error ?? 'Errore nel salvataggio. Riprova.')
+      }
+    } catch {
+      setSaveError('Errore di rete. Riprova.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    await logout()
+    router.replace('/login')
+  }
+
+  return (
+    <div className="min-h-dvh bg-[#1a1a2e] text-white">
+      {/* Header */}
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-[#1a1a2e] px-4 py-4">
+        <h1 className="text-xl font-bold text-[#E8A838]">Impostazioni</h1>
+      </div>
+
+      <div className="px-4 py-5 space-y-6 pb-28">
+
+        {/* Profile preview */}
+        <div className="flex items-center gap-4 rounded-2xl bg-white/5 p-4">
+          <div
+            className="relative cursor-pointer"
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            aria-label="Cambia emoji avatar"
+          >
+            <Avatar
+              emoji={avatarEmoji || member.avatar_emoji}
+              url={member.avatar_url}
+              name={member.name}
+              size="lg"
+              color={member.color}
+            />
+            <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </div>
+          </div>
+          <div>
+            <p className="font-bold text-lg text-white">{member.name}</p>
+            {member.family_role && (
+              <p className="text-sm text-[#E8A838]">{member.family_role}</p>
+            )}
+            {member.is_admin && (
+              <span className="inline-block mt-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-[10px] font-semibold text-purple-300">
+                Amministratore
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Emoji picker */}
+        {showEmojiPicker && (
+          <div className="rounded-2xl bg-white/5 p-4">
+            <p className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">
+              Scegli emoji avatar
+            </p>
+            <div className="grid grid-cols-8 gap-2">
+              {EMOJI_OPTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => { setAvatarEmoji(emoji); setShowEmojiPicker(false) }}
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-xl transition-all ${
+                    avatarEmoji === emoji
+                      ? 'ring-2 ring-[#E8A838] bg-[#E8A838]/20 scale-110'
+                      : 'hover:bg-white/10'
+                  }`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => { setAvatarEmoji(''); setShowEmojiPicker(false) }}
+              className="mt-3 text-xs text-white/40 hover:text-white/70 underline"
+            >
+              Rimuovi emoji
+            </button>
+          </div>
+        )}
+
+        {/* Bio */}
+        <div className="rounded-2xl bg-white/5 p-4">
+          <label className="block text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">
+            Biografia
+          </label>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            placeholder="Raccontaci qualcosa di te…"
+            rows={3}
+            maxLength={300}
+            className="w-full resize-none rounded-xl bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[#E8A838]"
+          />
+          <p className="text-right text-[10px] text-white/30 mt-1">{bio.length}/300</p>
+        </div>
+
+        {/* Change PIN */}
+        <div className="rounded-2xl bg-white/5 p-4">
+          <p className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">
+            Cambia PIN
+          </p>
+          <div className="space-y-3">
+            <input
+              type="password"
+              inputMode="numeric"
+              value={currentPin}
+              onChange={(e) => { setCurrentPin(e.target.value); setPinError('') }}
+              placeholder="PIN corrente"
+              className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[#E8A838] tracking-widest"
+            />
+            <input
+              type="password"
+              inputMode="numeric"
+              value={newPin}
+              onChange={(e) => { setNewPin(e.target.value); setPinError('') }}
+              placeholder="Nuovo PIN (min. 4 cifre)"
+              className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[#E8A838] tracking-widest"
+            />
+            <input
+              type="password"
+              inputMode="numeric"
+              value={confirmPin}
+              onChange={(e) => { setConfirmPin(e.target.value); setPinError('') }}
+              placeholder="Conferma nuovo PIN"
+              className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[#E8A838] tracking-widest"
+            />
+            {pinError && <p className="text-xs text-red-400">{pinError}</p>}
+          </div>
+        </div>
+
+        {/* Notifications */}
+        <div className="rounded-2xl bg-white/5 p-4 space-y-4">
+          <p className="text-xs font-semibold text-white/50 uppercase tracking-wide">
+            Notifiche
+          </p>
+
+          {/* Push */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-white">Notifiche push</p>
+              <p className="text-xs text-white/40 mt-0.5">Ricevi notifiche sul dispositivo</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNotifyPush(!notifyPush)}
+              className={`relative h-6 w-11 rounded-full transition-colors ${
+                notifyPush ? 'bg-[#E8A838]' : 'bg-white/20'
+              }`}
+              role="switch"
+              aria-checked={notifyPush}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  notifyPush ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Telegram */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-white">Notifiche Telegram</p>
+              <p className="text-xs text-white/40 mt-0.5">Ricevi messaggi via Telegram</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNotifyTelegram(!notifyTelegram)}
+              className={`relative h-6 w-11 rounded-full transition-colors ${
+                notifyTelegram ? 'bg-[#E8A838]' : 'bg-white/20'
+              }`}
+              role="switch"
+              aria-checked={notifyTelegram}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  notifyTelegram ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Telegram Chat ID */}
+          {notifyTelegram && (
+            <div>
+              <label className="block text-xs font-medium text-white/50 mb-2">
+                Telegram Chat ID
+              </label>
+              <input
+                type="text"
+                value={telegramChatId}
+                onChange={(e) => setTelegramChatId(e.target.value)}
+                placeholder="es. 123456789"
+                className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[#E8A838]"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Feedback messages */}
+        {saveError && (
+          <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
+            <p className="text-sm text-red-400">{saveError}</p>
+          </div>
+        )}
+        {saveSuccess && (
+          <div className="rounded-xl bg-green-500/10 border border-green-500/20 px-4 py-3">
+            <p className="text-sm text-green-400">Impostazioni salvate con successo!</p>
+          </div>
+        )}
+
+        {/* Save button */}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full rounded-2xl bg-[#E8A838] py-3.5 text-base font-bold text-[#1a1a2e] disabled:opacity-50 transition-opacity active:scale-95"
+        >
+          {saving ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
+              Salvataggio…
+            </span>
+          ) : (
+            'Salva modifiche'
+          )}
+        </button>
+
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="w-full rounded-2xl border border-red-500/30 py-3.5 text-base font-semibold text-red-400 hover:bg-red-500/10 disabled:opacity-50 transition-colors active:scale-95"
+        >
+          {loggingOut ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="h-4 w-4 rounded-full border-2 border-red-400 border-t-transparent animate-spin" />
+              Uscita…
+            </span>
+          ) : (
+            'Esci dall\'account'
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}

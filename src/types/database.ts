@@ -1,0 +1,386 @@
+export type Member = {
+  id: string
+  name: string
+  avatar_emoji: string | null
+  avatar_url: string | null
+  family_role: string
+  bio: string
+  pin_hash: string
+  is_admin: boolean
+  is_active: boolean
+  color: string
+  notify_push: boolean
+  notify_telegram: boolean
+  telegram_chat_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type MemberPublic = {
+  id: string
+  name: string
+  avatar_emoji: string | null
+  avatar_url: string | null
+  family_role: string
+  bio: string
+  is_admin: boolean
+  is_active: boolean
+  color: string
+}
+
+export type Session = {
+  id: string
+  member_id: string
+  token: string
+  expires_at: string
+  created_at: string
+}
+
+export type Post = {
+  id: string
+  author_id: string
+  text: string
+  post_type: 'normal' | 'recipe' | 'story'
+  created_at: string
+  updated_at: string
+}
+
+export type PostWithDetails = Post & {
+  author: MemberPublic
+  images: PostImage[]
+  likes: PostLike[]
+  comments_count: number
+  liked_by_me: boolean
+}
+
+export type PostImage = {
+  id: string
+  post_id: string
+  image_url: string
+  sort_order: number
+  created_at: string
+}
+
+export type PostLike = {
+  id: string
+  post_id: string
+  member_id: string
+  created_at: string
+}
+
+export type PostComment = {
+  id: string
+  post_id: string
+  author_id: string
+  text: string
+  created_at: string
+}
+
+export type PostCommentWithAuthor = PostComment & {
+  author: MemberPublic
+}
+
+export type Activity = {
+  id: string
+  title: string
+  icon: string
+  color: string
+  day_of_week: number
+  time: string
+  location: string
+  notes: string
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ActivityWithDetails = Activity & {
+  participants: MemberPublic[]
+  roles: ActivityRole[]
+  weekly_status: ActivityWeeklyStatus | null
+}
+
+export type ActivityRole = {
+  id: string
+  activity_id: string
+  member_id: string
+  role_label: string
+  member?: MemberPublic
+}
+
+export type ActivityWeeklyStatus = {
+  id: string
+  activity_id: string
+  week_start: string
+  status: 'pending' | 'confirmed' | 'skipped' | 'modified'
+  confirmed_by: string | null
+  modified_notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CalendarEvent = {
+  id: string
+  title: string
+  icon: string
+  color: string
+  event_date: string
+  event_time: string | null
+  location: string
+  notes: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type CalendarEventWithDetails = CalendarEvent & {
+  participants: MemberPublic[]
+}
+
+export type Task = {
+  id: string
+  title: string
+  notes: string
+  is_completed: boolean
+  completed_by: string | null
+  completed_at: string | null
+  linked_event_id: string | null
+  linked_activity_id: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type TaskWithDetails = Task & {
+  assignees: MemberPublic[]
+  creator: MemberPublic | null
+}
+
+export type ChatGroup = {
+  id: string
+  name: string
+  is_direct: boolean
+  icon: string
+  created_by: string | null
+  created_at: string
+}
+
+export type ChatGroupWithDetails = ChatGroup & {
+  members: MemberPublic[]
+  last_message: ChatMessage | null
+  unread_count: number
+}
+
+export type ChatMessage = {
+  id: string
+  group_id: string
+  author_id: string
+  text: string
+  created_at: string
+}
+
+export type ChatMessageWithAuthor = ChatMessage & {
+  author: MemberPublic
+}
+
+export type ChatReadStatus = {
+  id: string
+  group_id: string
+  member_id: string
+  last_read_at: string
+}
+
+export type Album = {
+  id: string
+  name: string
+  cover_image_url: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export type AlbumWithDetails = Album & {
+  photo_count: number
+  creator: MemberPublic | null
+}
+
+export type AlbumPhoto = {
+  id: string
+  album_id: string
+  image_url: string
+  caption: string
+  uploaded_by: string | null
+  post_id: string | null
+  created_at: string
+}
+
+export type Notification = {
+  id: string
+  member_id: string
+  type: 'activity_reminder' | 'new_event' | 'task_assigned' | 'new_post' | 'new_comment'
+  title: string
+  body: string
+  link: string | null
+  is_read: boolean
+  sent_push: boolean
+  sent_telegram: boolean
+  created_at: string
+}
+
+export type PushSubscription = {
+  id: string
+  member_id: string
+  endpoint: string
+  keys_p256dh: string
+  keys_auth: string
+  created_at: string
+}
+
+export type AppConfig = {
+  key: string
+  value: string
+  updated_at: string
+}
+
+// --- Input types ---
+
+export type CreateMemberInput = {
+  name: string
+  avatar_emoji?: string
+  family_role: string
+  pin: string
+  bio?: string
+  color?: string
+  is_admin?: boolean
+}
+
+export type UpdateMemberInput = {
+  name?: string
+  avatar_emoji?: string
+  avatar_url?: string
+  family_role?: string
+  bio?: string
+  color?: string
+  is_admin?: boolean
+  is_active?: boolean
+  notify_push?: boolean
+  notify_telegram?: boolean
+  telegram_chat_id?: string
+}
+
+export type CreatePostInput = {
+  text: string
+  post_type?: 'normal' | 'recipe' | 'story'
+  images?: File[]
+}
+
+export type CreateActivityInput = {
+  title: string
+  icon?: string
+  color?: string
+  day_of_week: number
+  time: string
+  location?: string
+  notes?: string
+  participant_ids: string[]
+  roles?: { member_id: string; role_label: string }[]
+}
+
+export type UpdateActivityInput = {
+  title?: string
+  icon?: string
+  color?: string
+  day_of_week?: number
+  time?: string
+  location?: string
+  notes?: string
+  participant_ids?: string[]
+  roles?: { member_id: string; role_label: string }[]
+}
+
+export type SetWeeklyStatusInput = {
+  status: 'confirmed' | 'skipped' | 'modified' | 'pending'
+  modified_notes?: string
+}
+
+export type CreateEventInput = {
+  title: string
+  icon?: string
+  color?: string
+  event_date: string
+  event_time?: string
+  location?: string
+  notes?: string
+  participant_ids?: string[]
+}
+
+export type UpdateEventInput = {
+  title?: string
+  icon?: string
+  color?: string
+  event_date?: string
+  event_time?: string | null
+  location?: string
+  notes?: string
+  participant_ids?: string[]
+}
+
+export type CreateTaskInput = {
+  title: string
+  notes?: string
+  assignee_ids?: string[]
+  linked_event_id?: string
+  linked_activity_id?: string
+}
+
+export type UpdateTaskInput = {
+  title?: string
+  notes?: string
+  is_completed?: boolean
+  assignee_ids?: string[]
+}
+
+export type CreateChatGroupInput = {
+  name: string
+  member_ids: string[]
+  is_direct?: boolean
+  icon?: string
+}
+
+export type SendMessageInput = {
+  text: string
+}
+
+export type LoginInput = {
+  member_id: string
+  pin: string
+}
+
+export type SetupInput = {
+  name: string
+  pin: string
+  avatar_emoji?: string
+  family_role?: string
+}
+
+export type OfflineOperation = {
+  id: string
+  type: 'create_post' | 'toggle_like' | 'add_comment'
+  payload: Record<string, unknown>
+  created_at: string
+  status: 'pending' | 'syncing' | 'failed'
+  retries: number
+}
+
+export type ApiResponse<T> = {
+  data: T | null
+  error: string | null
+}
+
+export type PaginatedResponse<T> = {
+  data: T[]
+  total: number
+  page: number
+  per_page: number
+  has_more: boolean
+}
