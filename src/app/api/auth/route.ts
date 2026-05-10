@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/client'
-import { verifyPin, createSession, deleteSession, getCurrentMember, toPublicMember } from '@/lib/auth'
-import { ApiResponse, MemberPublic, LoginInput } from '@/types/database'
+import { verifyPin, createSession, deleteSession, getCurrentMember, toPublicMember, rehashPinIfNeeded } from '@/lib/auth'
+import { LoginInput } from '@/types/database'
 
 // POST /api/auth — login
-export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<{ member: MemberPublic; token: string }>>> {
+export async function POST(request: NextRequest) {
   let body: Partial<LoginInput>
   try {
     body = await request.json()
@@ -40,6 +40,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
     return NextResponse.json({ data: null, error: 'PIN non valido' }, { status: 401 })
   }
 
+  await rehashPinIfNeeded(member.id, pin, member.pin_hash)
+
   const token = await createSession(member.id)
   const memberPublic = toPublicMember(member)
 
@@ -47,13 +49,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
 }
 
 // DELETE /api/auth — logout
-export async function DELETE(): Promise<NextResponse<ApiResponse<null>>> {
+export async function DELETE() {
   await deleteSession()
   return NextResponse.json({ data: null, error: null }, { status: 200 })
 }
 
 // GET /api/auth — check session
-export async function GET(): Promise<NextResponse<ApiResponse<{ member: MemberPublic }>>> {
+export async function GET() {
   const member = await getCurrentMember()
 
   if (!member) {

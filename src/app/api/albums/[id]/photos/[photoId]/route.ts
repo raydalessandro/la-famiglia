@@ -8,11 +8,9 @@ type RouteContext = { params: Promise<{ id: string; photoId: string }> }
 // DELETE /api/albums/:id/photos/:photoId → ApiResponse<null>
 // Deletes image from storage, removes DB record, updates cover if needed
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
-  try {
-    await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const { id: albumId, photoId } = await params
   const db = createServerClient()

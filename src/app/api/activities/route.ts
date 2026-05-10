@@ -2,19 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { getWeekStart } from '@/lib/dates'
-import {
-  ActivityWithDetails,
-  CreateActivityInput,
-  ApiResponse,
-  MemberPublic,
-} from '@/types/database'
+import { ActivityWithDetails, CreateActivityInput, MemberPublic } from '@/types/database'
 
-export async function GET(request: NextRequest): Promise<NextResponse<ApiResponse<ActivityWithDetails[]>>> {
-  try {
-    await requireAuth()
-  } catch (res) {
-    return res as NextResponse<ApiResponse<ActivityWithDetails[]>>
-  }
+export async function GET(request: NextRequest) {
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const db = createServerClient()
   const { searchParams } = new URL(request.url)
@@ -99,13 +92,10 @@ export async function GET(request: NextRequest): Promise<NextResponse<ApiRespons
   return NextResponse.json({ data: result, error: null })
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<ActivityWithDetails>>> {
-  let currentMember
-  try {
-    currentMember = await requireAuth()
-  } catch (res) {
-    return res as NextResponse<ApiResponse<ActivityWithDetails>>
-  }
+export async function POST(request: NextRequest) {
+  const currentMember = await requireAuth()
+
+  if (currentMember instanceof NextResponse) return currentMember
 
   const db = createServerClient()
   let body: CreateActivityInput

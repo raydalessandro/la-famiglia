@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for POST/DELETE/GET /api/auth and GET/POST /api/setup
  * Written from spec only (Phase 4A) — routes not read.
@@ -72,6 +73,8 @@ vi.mock('../../src/lib/auth', () => ({
   requireAuth: vi.fn(),
   verifyPin: vi.fn(),
   hashPin: vi.fn(),
+  needsRehash: vi.fn(() => false),
+  rehashPinIfNeeded: vi.fn(async () => undefined),
   createSession: vi.fn(),
   deleteSession: vi.fn(),
   validateSession: vi.fn(),

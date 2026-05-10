@@ -43,6 +43,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
+
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'PROCESS_OFFLINE_QUEUE') {
         processQueue().catch(() => {})

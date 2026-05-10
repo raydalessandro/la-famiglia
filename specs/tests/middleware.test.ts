@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -50,9 +51,9 @@ describe('middleware', () => {
       expect(config).toHaveProperty('matcher')
       expect(Array.isArray(config.matcher)).toBe(true)
       // Must contain a pattern that excludes _next/static, _next/image,
-      // favicon.ico, sw.js, manifest.json
+      // favicon.ico, sw.js, manifest.webmanifest
       const pattern = config.matcher[0]
-      expect(pattern).toBe('/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.json).*)')
+      expect(pattern).toBe('/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest).*)')
     })
   })
 

@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { getWeekStart } from '@/lib/dates'
-import {
-  ActivityWithDetails,
-  UpdateActivityInput,
-  ApiResponse,
-  MemberPublic,
-} from '@/types/database'
+import { ActivityWithDetails, UpdateActivityInput, MemberPublic } from '@/types/database'
 
 async function fetchActivityWithDetails(
   db: ReturnType<typeof createServerClient>,
@@ -62,12 +57,10 @@ async function fetchActivityWithDetails(
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResponse<ActivityWithDetails>>> {
-  try {
-    await requireAuth()
-  } catch (res) {
-    return res as NextResponse<ApiResponse<ActivityWithDetails>>
-  }
+) {
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const { id } = await params
   const db = createServerClient()
@@ -86,13 +79,10 @@ export async function GET(
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResponse<ActivityWithDetails>>> {
-  let currentMember
-  try {
-    currentMember = await requireAuth()
-  } catch (res) {
-    return res as NextResponse<ApiResponse<ActivityWithDetails>>
-  }
+) {
+  const currentMember = await requireAuth()
+
+  if (currentMember instanceof NextResponse) return currentMember
 
   const { id } = await params
   const db = createServerClient()
@@ -194,13 +184,10 @@ export async function PATCH(
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResponse<null>>> {
-  let currentMember
-  try {
-    currentMember = await requireAuth()
-  } catch (res) {
-    return res as NextResponse<ApiResponse<null>>
-  }
+) {
+  const currentMember = await requireAuth()
+
+  if (currentMember instanceof NextResponse) return currentMember
 
   const { id } = await params
   const db = createServerClient()

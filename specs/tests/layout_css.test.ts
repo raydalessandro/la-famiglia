@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Test: Root layout — CSS and metadata correctness
  *
@@ -39,12 +40,13 @@ describe('Root layout — App Router conventions', () => {
 
   it('uses Metadata export for manifest (not <link> tag)', () => {
     expect(content).not.toMatch(/<link\s+rel="manifest"/)
-    expect(content).toMatch(/manifest:\s*['"]\/manifest\.json['"]/)
+    expect(content).toMatch(/manifest:\s*['"]\/manifest\.webmanifest['"]/)
   })
 
-  it('uses Metadata export for theme-color (not <meta> tag)', () => {
+  it('uses Viewport export for theme-color (not <meta> tag)', () => {
     expect(content).not.toMatch(/<meta\s+name="theme-color"/)
-    expect(content).toMatch(/themeColor:\s*['"]#E8A838['"]/)
+    // themeColor must live on the Viewport export per Next 14+ rules.
+    expect(content).toMatch(/export\s+const\s+viewport[\s\S]*themeColor:\s*['"]#E8A838['"]/)
   })
 
   it('has <html lang="it">', () => {

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for src/lib/auth.ts
  * Generated from spec only (Phase 4A). The implementation is NOT read.
@@ -46,20 +47,18 @@ const PAST_EXPIRY = new Date(Date.now() - 1000).toISOString()
 // L2 Mocks — set up before importing the module under test
 // ---------------------------------------------------------------------------
 
-// --- crypto mock ---
-const mockDigest = vi.fn(() => 'a'.repeat(64))
-const mockUpdate = vi.fn(() => ({ digest: mockDigest }))
-const mockCreateHash = vi.fn(() => ({ update: mockUpdate }))
+// --- crypto mock — only mock randomUUID; keep createHash real so legacy
+// SHA256 verification can run against bcrypt + legacy PIN paths in tests.
 const mockRandomUUID = vi.fn(() => 'generated-uuid-token')
 
-vi.mock('crypto', () => ({
-  default: {
-    createHash: mockCreateHash,
+vi.mock('crypto', async () => {
+  const actual = await vi.importActual<typeof import('crypto')>('crypto')
+  return {
+    ...actual,
+    default: { ...actual, randomUUID: mockRandomUUID },
     randomUUID: mockRandomUUID,
-  },
-  createHash: mockCreateHash,
-  randomUUID: mockRandomUUID,
-}))
+  }
+})
 
 // --- next/headers cookies mock ---
 const mockCookiesGet = vi.fn()
@@ -131,7 +130,7 @@ const {
   toPublicMember,
   SESSION_COOKIE_NAME,
   SESSION_DURATION_DAYS,
-  PIN_SALT,
+  needsRehash,
 } = authModule
 
 // ---------------------------------------------------------------------------
@@ -148,6 +147,8 @@ function resetMocks() {
   mockLt.mockReturnValue(_sharedChain)
   // mockFrom always returns the shared chain (set below), so re-set it too
   mockFrom.mockReturnValue(_sharedChain)
+  // Clear validateSession cache so each test re-hits the (mocked) DB
+  authModule.clearSessionCache()
 }
 
 function mockCookie(value: string | undefined) {
@@ -219,23 +220,21 @@ describe('1. Interface — exports and return types', () => {
     expect(SESSION_DURATION_DAYS).toBe(30)
   })
 
-  it('PIN_SALT constant is "famiglia_salt_2026"', () => {
-    expect(PIN_SALT).toBe('famiglia_salt_2026')
-  })
-
-  it('hashPin is synchronous and returns a string', () => {
-    mockDigest.mockReturnValue('a'.repeat(64))
+  it('hashPin is synchronous and returns a bcrypt hash string', () => {
     const result = hashPin('1234')
     expect(typeof result).toBe('string')
-    // Ensure no Promise was returned
+    expect(result).toMatch(/^\$2[aby]\$/)
     expect(result).not.toHaveProperty('then')
   })
 
   it('verifyPin is synchronous and returns a boolean', () => {
-    mockDigest.mockReturnValue('a'.repeat(64))
-    const result = verifyPin('1234', 'a'.repeat(64))
+    const result = verifyPin('1234', hashPin('1234'))
     expect(typeof result).toBe('boolean')
     expect(result).not.toHaveProperty('then')
+  })
+
+  it('needsRehash is exported', () => {
+    expect(typeof needsRehash).toBe('function')
   })
 
   it('createSession returns a Promise', () => {
@@ -269,70 +268,57 @@ describe('2. Unit — crypto and data transformation', () => {
     resetMocks()
   })
 
-  describe('hashPin', () => {
-    it('calls crypto.createHash with "sha256"', () => {
-      mockDigest.mockReturnValue('a'.repeat(64))
-      hashPin('1234')
-      expect(mockCreateHash).toHaveBeenCalledWith('sha256')
-    })
-
-    it('passes salt + pin to .update()', () => {
-      mockDigest.mockReturnValue('a'.repeat(64))
-      hashPin('1234')
-      expect(mockUpdate).toHaveBeenCalledWith('famiglia_salt_20261234')
-    })
-
-    it('calls .digest("hex")', () => {
-      mockDigest.mockReturnValue('a'.repeat(64))
-      hashPin('1234')
-      expect(mockDigest).toHaveBeenCalledWith('hex')
-    })
-
-    it('returns the hex string from digest (64 chars)', () => {
-      const fakeHash = 'b'.repeat(64)
-      mockDigest.mockReturnValue(fakeHash)
+  describe('hashPin (bcrypt)', () => {
+    it('returns a bcrypt-format string (starts with $2)', () => {
       const result = hashPin('1234')
-      expect(result).toBe(fakeHash)
-      expect(result).toHaveLength(64)
+      expect(result).toMatch(/^\$2[aby]\$/)
     })
 
-    it('produces different results for different pins', () => {
-      // Simulate two different digest results for two different inputs
-      mockDigest
-        .mockReturnValueOnce('a'.repeat(64))
-        .mockReturnValueOnce('b'.repeat(64))
+    it('produces different hashes for the same pin (random salt)', () => {
+      const hash1 = hashPin('1234')
+      const hash2 = hashPin('1234')
+      expect(hash1).not.toBe(hash2)
+    })
+
+    it('produces different hashes for different pins', () => {
       const hash1 = hashPin('1234')
       const hash2 = hashPin('5678')
       expect(hash1).not.toBe(hash2)
     })
-
-    it('consistent: same pin always calls update with same data', () => {
-      mockDigest.mockReturnValue('a'.repeat(64))
-      hashPin('9999')
-      hashPin('9999')
-      expect(mockUpdate).toHaveBeenNthCalledWith(1, 'famiglia_salt_20269999')
-      expect(mockUpdate).toHaveBeenNthCalledWith(2, 'famiglia_salt_20269999')
-    })
   })
 
   describe('verifyPin', () => {
-    it('returns true when hashPin(pin) matches the stored hash', () => {
-      const storedHash = 'c'.repeat(64)
-      mockDigest.mockReturnValue(storedHash)
-      const result = verifyPin('correct-pin', storedHash)
-      expect(result).toBe(true)
+    it('returns true when pin matches its bcrypt hash', () => {
+      const hash = hashPin('correct-pin')
+      expect(verifyPin('correct-pin', hash)).toBe(true)
     })
 
-    it('returns false when hashPin(pin) does not match the stored hash', () => {
-      mockDigest.mockReturnValue('d'.repeat(64))
-      const result = verifyPin('wrong-pin', 'e'.repeat(64))
-      expect(result).toBe(false)
+    it('returns false when pin does not match the bcrypt hash', () => {
+      const hash = hashPin('correct-pin')
+      expect(verifyPin('wrong-pin', hash)).toBe(false)
     })
 
     it('returns false for an empty pin against a non-empty hash', () => {
-      mockDigest.mockReturnValue('0'.repeat(64))
-      const result = verifyPin('', 'f'.repeat(64))
-      expect(result).toBe(false)
+      const hash = hashPin('1234')
+      expect(verifyPin('', hash)).toBe(false)
+    })
+
+    it('verifies legacy SHA256 hashes (transparent rehash compat)', () => {
+      // Pre-computed: sha256('famiglia_salt_2026' + '4321')
+      const legacy = '13a292cd61e87afce7e84f48e2e212d84cace1b3589eaae2eaf6f527762be059'
+      expect(verifyPin('4321', legacy)).toBe(true)
+      expect(verifyPin('0000', legacy)).toBe(false)
+    })
+  })
+
+  describe('needsRehash', () => {
+    it('returns false for a bcrypt hash', () => {
+      expect(needsRehash(hashPin('1234'))).toBe(false)
+    })
+
+    it('returns true for a legacy SHA256 hex hash', () => {
+      const legacy = 'a'.repeat(64)
+      expect(needsRehash(legacy)).toBe(true)
     })
   })
 
@@ -593,24 +579,19 @@ describe('3. Integration — flows', () => {
   // -------------------------------------------------------------------------
 
   describe('requireAuth', () => {
-    it('throws a Response with status 401 when no session', async () => {
+    it('returns a NextResponse with status 401 when no session', async () => {
       mockCookie(undefined)
-      await expect(requireAuth()).rejects.toSatisfy(
-        (e: unknown) => e instanceof Response && e.status === 401,
-      )
+      const result = await requireAuth()
+      expect(result).toBeInstanceOf(Response)
+      expect((result as Response).status).toBe(401)
     })
 
     it('returns the Member when session is valid', async () => {
       mockCookie(VALID_TOKEN)
       mockMemberQuery(MEMBER_FULL)
-      const member = await requireAuth()
-      expect(member).toMatchObject({ id: MEMBER_FULL.id })
-    })
-
-    it('does not throw when session is valid', async () => {
-      mockCookie(VALID_TOKEN)
-      mockMemberQuery(MEMBER_FULL)
-      await expect(requireAuth()).resolves.not.toThrow()
+      const result = await requireAuth()
+      expect(result).not.toBeInstanceOf(Response)
+      expect(result).toMatchObject({ id: MEMBER_FULL.id })
     })
   })
 
@@ -619,32 +600,27 @@ describe('3. Integration — flows', () => {
   // -------------------------------------------------------------------------
 
   describe('requireAdmin', () => {
-    it('throws Response 401 when no session', async () => {
+    it('returns NextResponse 401 when no session', async () => {
       mockCookie(undefined)
-      await expect(requireAdmin()).rejects.toSatisfy(
-        (e: unknown) => e instanceof Response && e.status === 401,
-      )
+      const result = await requireAdmin()
+      expect(result).toBeInstanceOf(Response)
+      expect((result as Response).status).toBe(401)
     })
 
-    it('throws Response 403 when authenticated but not admin', async () => {
+    it('returns NextResponse 403 when authenticated but not admin', async () => {
       mockCookie(VALID_TOKEN)
       mockMemberQuery(MEMBER_FULL) // MEMBER_FULL.is_admin === false
-      await expect(requireAdmin()).rejects.toSatisfy(
-        (e: unknown) => e instanceof Response && e.status === 403,
-      )
+      const result = await requireAdmin()
+      expect(result).toBeInstanceOf(Response)
+      expect((result as Response).status).toBe(403)
     })
 
     it('returns the Member when authenticated and is_admin is true', async () => {
       mockCookie(VALID_TOKEN)
       mockMemberQuery(MEMBER_ADMIN)
-      const member = await requireAdmin()
-      expect(member.is_admin).toBe(true)
-    })
-
-    it('does not throw when session belongs to an admin', async () => {
-      mockCookie(VALID_TOKEN)
-      mockMemberQuery(MEMBER_ADMIN)
-      await expect(requireAdmin()).resolves.not.toThrow()
+      const result = await requireAdmin()
+      expect(result).not.toBeInstanceOf(Response)
+      expect(result).toMatchObject({ id: MEMBER_ADMIN.id, is_admin: true })
     })
   })
 

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Test: PATCH /api/members/:id — PIN change flow
  * Phase 4A — Written from spec only (L0.5 + L1_L2_members.md)
@@ -11,6 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { NextResponse } from 'next/server'
 
 // --- Mocks ---
 
@@ -46,10 +48,7 @@ vi.mock('@/lib/auth', () => ({
   requireAuth: vi.fn(async () => currentAuthMember),
   requireAdmin: vi.fn(async () => {
     if (!currentAuthMember.is_admin) {
-      throw new Response(JSON.stringify({ data: null, error: 'Accesso negato' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' },
-      })
+      return NextResponse.json({ data: null, error: 'Accesso negato' }, { status: 403 })
     }
     return currentAuthMember
   }),

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
-import { Member } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -12,12 +11,9 @@ type RouteContext = { params: Promise<{ id: string }> }
 //   - assignee (non-creator, non-admin): may only update is_completed
 //   - anyone else: 403
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id } = await params
 
@@ -147,12 +143,9 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 // DELETE /api/tasks/:id → ApiResponse<null>
 // Authorization: only creator or admin can delete.
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id } = await params
   const db = createServerClient()

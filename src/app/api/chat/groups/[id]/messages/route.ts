@@ -32,12 +32,9 @@ async function ensureMembership(
 // GET /api/chat/groups/:id/messages?page=1&per_page=30 → PaginatedResponse<ChatMessage>
 // Returns paginated messages newest first, updates last_read_at
 export async function GET(req: NextRequest, { params }: RouteContext) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id: groupId } = await params
   const { searchParams } = new URL(req.url)
@@ -105,12 +102,9 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 // POST /api/chat/groups/:id/messages → 201 ApiResponse<ChatMessage>
 // Body: { text?, message_type?, media_url? }
 export async function POST(req: NextRequest, { params }: RouteContext) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id: groupId } = await params
 

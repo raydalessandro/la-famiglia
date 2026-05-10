@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
-import { Member } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
 // GET /api/events/:id → ApiResponse<Event>
 export async function GET(_req: NextRequest, { params }: RouteContext) {
-  try {
-    await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const { id } = await params
   const db = createServerClient()
@@ -38,12 +35,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 // Body: { title?, event_date?, description?, location?, participant_ids? }
 // Authorization: only creator or admin can update.
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id } = await params
 
@@ -131,12 +125,9 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 // DELETE /api/events/:id → ApiResponse<null>
 // Authorization: only creator or admin can delete.
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id } = await params
   const db = createServerClient()

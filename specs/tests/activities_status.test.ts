@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Activities — status route + authorization tests
  *
