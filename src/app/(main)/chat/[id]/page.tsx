@@ -32,6 +32,7 @@ export default function ChatRoomPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const prevScrollHeight = useRef(0)
+  const hasScrolledToBottom = useRef(false)
 
   const group = groups.find((g) => g.id === groupId)
 
@@ -47,9 +48,17 @@ export default function ChatRoomPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showEmojiPicker])
 
-  // Auto-scroll to bottom on new messages (but not when loading older ones)
+  // Auto-scroll to bottom on new messages (but not when loading older ones).
+  // First time: jump immediately so the freshest message lines up against the
+  // input bar (smooth scroll on mount races with layout and can leave the
+  // view stuck mid-page, which looks like the messages are "cut off").
   useEffect(() => {
-    if (!loadingMore) {
+    if (loadingMore || messages.length === 0) return
+    if (!listRef.current) return
+    if (!hasScrolledToBottom.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight
+      hasScrolledToBottom.current = true
+    } else {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages, loadingMore])
