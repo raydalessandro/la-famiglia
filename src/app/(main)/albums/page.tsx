@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAlbums } from '@/hooks/useAlbums'
 import { useAuth } from '@/hooks/useAuth'
-import { BottomSheet } from '@/components/ui'
+import { BottomSheet, Button, Skeleton } from '@/components/ui'
 
 export default function AlbumsPage() {
   const router = useRouter()
@@ -47,7 +47,7 @@ export default function AlbumsPage() {
         {isLoading ? (
           <div className="grid grid-cols-2 gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-44 rounded-2xl bg-white/5 animate-pulse" />
+              <Skeleton key={i} className="h-44 rounded-card" />
             ))}
           </div>
         ) : albums.length === 0 ? (
@@ -137,20 +137,14 @@ export default function AlbumsPage() {
             {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
           </div>
 
-          <button
+          <Button
             onClick={handleCreate}
-            disabled={creating || !newName.trim()}
-            className="w-full rounded-xl bg-[#E8A838] py-3 text-sm font-bold text-[#1a1a2e] disabled:opacity-40 transition-opacity active:scale-95"
+            disabled={!newName.trim()}
+            loading={creating}
+            fullWidth
           >
-            {creating ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-                Creazione…
-              </span>
-            ) : (
-              'Crea album'
-            )}
-          </button>
+            {creating ? 'Creazione…' : 'Crea album'}
+          </Button>
         </div>
       </BottomSheet>
     </div>

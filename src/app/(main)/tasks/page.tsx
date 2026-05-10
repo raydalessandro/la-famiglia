@@ -4,8 +4,7 @@ import { useState, useMemo } from 'react'
 import { useTasks } from '@/hooks/useTasks'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { BottomSheet, ParticipantPicker, Avatar } from '@/components/ui'
-import { MiniAvatarStack } from '@/components/ui'
+import { BottomSheet, ParticipantPicker, Avatar, MiniAvatarStack, Button, Skeleton } from '@/components/ui'
 import { CreateTaskInput, TaskWithDetails } from '@/types/database'
 
 type FilterTab = 'all' | 'mine' | 'completed'
@@ -180,7 +179,7 @@ export default function TasksPage() {
       <div className="px-4 py-4 flex flex-col gap-2">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-16 bg-[#16213e] rounded-2xl animate-pulse border border-white/5" />
+            <Skeleton key={i} className="h-16 rounded-card" />
           ))
         ) : filteredTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -280,13 +279,14 @@ export default function TasksPage() {
             </button>
           )}
 
-          <button
+          <Button
             onClick={handleCreate}
-            disabled={isSubmitting || !form.title.trim()}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+            disabled={!form.title.trim()}
+            loading={isSubmitting}
+            fullWidth
           >
             {isSubmitting ? 'Creando...' : 'Crea compito'}
-          </button>
+          </Button>
         </div>
       </BottomSheet>
     </div>

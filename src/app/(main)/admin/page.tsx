@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, BottomSheet, IconPicker } from '@/components/ui'
+import { Avatar, BottomSheet, IconPicker, Button } from '@/components/ui'
 import { MemberPublic } from '@/types/database'
 
 type CreateMemberForm = {
@@ -311,20 +311,9 @@ export default function AdminPage() {
 
           {createError && <p className="text-xs text-red-400">{createError}</p>}
 
-          <button
-            onClick={handleCreate}
-            disabled={creating}
-            className="w-full rounded-xl bg-[#E8A838] py-3 text-sm font-bold text-[#1a1a2e] disabled:opacity-40 transition-opacity active:scale-95"
-          >
-            {creating ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-                Creazione…
-              </span>
-            ) : (
-              'Crea membro'
-            )}
-          </button>
+          <Button onClick={handleCreate} loading={creating} fullWidth>
+            {creating ? 'Creazione…' : 'Crea membro'}
+          </Button>
         </div>
       </BottomSheet>
 
@@ -356,20 +345,14 @@ export default function AdminPage() {
           {resetError && <p className="text-xs text-red-400">{resetError}</p>}
           {resetSuccess && <p className="text-xs text-green-400">PIN reimpostato con successo!</p>}
 
-          <button
+          <Button
             onClick={handleResetPin}
-            disabled={resetting || resetSuccess}
-            className="w-full rounded-xl bg-[#E8A838] py-3 text-sm font-bold text-[#1a1a2e] disabled:opacity-40 transition-opacity active:scale-95"
+            disabled={resetSuccess}
+            loading={resetting}
+            fullWidth
           >
-            {resetting ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-                Reset…
-              </span>
-            ) : (
-              'Reimposta PIN'
-            )}
-          </button>
+            {resetting ? 'Reset…' : 'Reimposta PIN'}
+          </Button>
         </div>
       </BottomSheet>
     </div>

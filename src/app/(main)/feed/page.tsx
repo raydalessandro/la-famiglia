@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
-import { Avatar, BottomSheet } from '@/components/ui'
+import { Avatar, BottomSheet, Button, PostCardSkeleton } from '@/components/ui'
 import { compressImage } from '@/lib/storage'
 import { PostWithDetails } from '@/types/database'
 
@@ -259,9 +259,7 @@ export default function FeedPage() {
       {/* Posts */}
       <div className="px-4 py-4 flex flex-col gap-4">
         {isLoading && posts.length === 0 ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="bg-[#16213e] rounded-2xl h-48 animate-pulse border border-white/5" />
-          ))
+          Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)
         ) : posts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <span className="text-5xl mb-4">📝</span>
@@ -376,13 +374,14 @@ export default function FeedPage() {
           </button>
 
           {/* Submit */}
-          <button
+          <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || (!formText.trim() && !formImages?.length)}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+            disabled={!formText.trim() && !formImages?.length}
+            loading={isSubmitting}
+            fullWidth
           >
             {isSubmitting ? 'Pubblicando...' : 'Pubblica'}
-          </button>
+          </Button>
         </div>
       </BottomSheet>
     </div>

@@ -5,7 +5,7 @@ import { useEvents } from '@/hooks/useEvents'
 import { useActivities } from '@/hooks/useActivities'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { BottomSheet, IconPicker, ColorPicker, ParticipantPicker } from '@/components/ui'
+import { BottomSheet, IconPicker, ColorPicker, ParticipantPicker, Button } from '@/components/ui'
 import { CalendarEventWithDetails, ActivityWithDetails, CreateEventInput } from '@/types/database'
 
 const MONTHS_IT = [
@@ -400,13 +400,14 @@ export default function CalendarPage() {
             />
           </div>
 
-          <button
+          <Button
             onClick={handleCreate}
-            disabled={isSubmitting || !form.title.trim()}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+            disabled={!form.title.trim()}
+            loading={isSubmitting}
+            fullWidth
           >
             {isSubmitting ? 'Creando...' : 'Crea evento'}
-          </button>
+          </Button>
         </div>
       </BottomSheet>
     </div>

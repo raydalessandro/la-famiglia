@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useChatGroups } from '@/hooks/useChat'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, BottomSheet, ParticipantPicker } from '@/components/ui'
+import { Avatar, BottomSheet, ParticipantPicker, Button, RowSkeleton } from '@/components/ui'
 import { ChatGroupWithDetails, MemberPublic } from '@/types/database'
 import { useRouter } from 'next/navigation'
 
@@ -167,15 +167,9 @@ export default function ChatPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-2 px-4 pt-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-3.5">
-              <div className="w-12 h-12 rounded-full bg-white/5 animate-pulse shrink-0" />
-              <div className="flex-1">
-                <div className="h-3.5 bg-white/5 rounded-full w-1/3 animate-pulse mb-2" />
-                <div className="h-2.5 bg-white/5 rounded-full w-2/3 animate-pulse" />
-              </div>
-            </div>
+            <RowSkeleton key={i} />
           ))}
         </div>
       ) : groups.length === 0 ? (
@@ -297,17 +291,18 @@ export default function ChatPage() {
             </div>
           )}
 
-          <button
+          <Button
             onClick={handleCreate}
-            disabled={isCreating || !canCreate}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+            disabled={!canCreate}
+            loading={isCreating}
+            fullWidth
           >
             {isCreating
               ? 'Creando...'
               : selectedMembers.length === 1
               ? 'Avvia chat diretta'
               : 'Crea gruppo'}
-          </button>
+          </Button>
         </div>
       </BottomSheet>
     </div>

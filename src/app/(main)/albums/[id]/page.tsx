@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useAlbums, useAlbumPhotos } from '@/hooks/useAlbums'
 import { useAuth } from '@/hooks/useAuth'
-import { Header, BottomSheet } from '@/components/ui'
+import { Header, BottomSheet, Button } from '@/components/ui'
 import { compressImage } from '@/lib/storage'
 import { AlbumPhoto } from '@/types/database'
 
@@ -190,20 +190,14 @@ export default function AlbumDetailPage() {
 
           {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
 
-          <button
+          <Button
             onClick={handleUpload}
-            disabled={uploading || !selectedFile}
-            className="w-full rounded-xl bg-[#E8A838] py-3 text-sm font-bold text-[#1a1a2e] disabled:opacity-40 transition-opacity active:scale-95"
+            disabled={!selectedFile}
+            loading={uploading}
+            fullWidth
           >
-            {uploading ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-                Caricamento…
-              </span>
-            ) : (
-              'Carica foto'
-            )}
-          </button>
+            {uploading ? 'Caricamento…' : 'Carica foto'}
+          </Button>
         </div>
       </BottomSheet>
 
