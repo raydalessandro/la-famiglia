@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for DELETE /api/albums/:id — authorization
  *

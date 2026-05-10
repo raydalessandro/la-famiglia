@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for src/lib/auth.ts
  * Generated from spec only (Phase 4A). The implementation is NOT read.

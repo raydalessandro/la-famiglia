@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Test: Root layout — CSS and metadata correctness
  *

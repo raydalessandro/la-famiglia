@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for GET / POST /api/chat/groups/:id/messages
  *

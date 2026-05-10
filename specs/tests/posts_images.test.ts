@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Test: POST /api/posts — Image upload flow
  * Phase 4A — Written from spec (L0.5 + L1_L2_posts.md)

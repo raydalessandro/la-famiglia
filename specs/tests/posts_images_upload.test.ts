@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Test: POST /api/posts — Image upload with Storage
  *

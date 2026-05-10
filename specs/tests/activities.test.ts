@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Activities API — unit tests (Phase 4A)
  *

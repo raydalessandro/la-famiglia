@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Test: PATCH /api/members/:id — PIN change flow
  * Phase 4A — Written from spec only (L0.5 + L1_L2_members.md)

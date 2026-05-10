@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
-import { Member } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
 

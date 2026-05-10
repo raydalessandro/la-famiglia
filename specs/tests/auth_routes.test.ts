@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for POST/DELETE/GET /api/auth and GET/POST /api/setup
  * Written from spec only (Phase 4A) — routes not read.

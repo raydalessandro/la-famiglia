@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { deleteImage } from '@/lib/storage'
-import { Member } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
