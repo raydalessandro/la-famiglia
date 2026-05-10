@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useAlbums, useAlbumPhotos } from '@/hooks/useAlbums'
 import { useAuth } from '@/hooks/useAuth'
-import { Header, BottomSheet, Button } from '@/components/ui'
+import { Header, BottomSheet, Button, EmptyState } from '@/components/ui'
 import { compressImage } from '@/lib/storage'
 import { AlbumPhoto } from '@/types/database'
 
@@ -97,19 +97,12 @@ export default function AlbumDetailPage() {
             <div className="h-8 w-8 rounded-full border-2 border-[#E8A838] border-t-transparent animate-spin" />
           </div>
         ) : photos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <span className="text-5xl">📷</span>
-            <div className="text-center">
-              <p className="text-white/60 font-medium">Nessuna foto ancora</p>
-              <p className="text-white/30 text-sm mt-1">Aggiungi la prima foto all&apos;album</p>
-            </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="mt-2 rounded-full bg-[#E8A838] px-6 py-2.5 text-sm font-semibold text-[#1a1a2e] active:scale-95 transition-transform"
-            >
-              Aggiungi foto
-            </button>
-          </div>
+          <EmptyState
+            icon="📷"
+            title="Album vuoto"
+            description="Aggiungi la prima foto — ognuno della famiglia potrà vederla."
+            action={<Button onClick={() => fileInputRef.current?.click()}>Aggiungi foto</Button>}
+          />
         ) : (
           /* Masonry 2-col grid */
           <div className="flex gap-2">

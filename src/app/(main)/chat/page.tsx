@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useChatGroups } from '@/hooks/useChat'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, BottomSheet, ParticipantPicker, Button, RowSkeleton } from '@/components/ui'
+import { Avatar, BottomSheet, ParticipantPicker, Button, RowSkeleton, EmptyState } from '@/components/ui'
 import { ChatGroupWithDetails, MemberPublic } from '@/types/database'
 import { useRouter } from 'next/navigation'
 
@@ -174,11 +174,12 @@ export default function ChatPage() {
           ))}
         </div>
       ) : groups.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center px-6">
-          <span className="text-5xl mb-4">💬</span>
-          <p className="text-white/60 text-base">Nessuna chat ancora.</p>
-          <p className="text-white/40 text-sm mt-1">Inizia una conversazione con la famiglia!</p>
-        </div>
+        <EmptyState
+          icon="💬"
+          title="Ancora nessuna chat"
+          description="Inizia una conversazione con un familiare o crea un gruppo."
+          action={<Button onClick={() => setSheetOpen(true)}>Nuova chat</Button>}
+        />
       ) : (
         <div>
           {/* Direct chats */}

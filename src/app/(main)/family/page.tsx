@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useMembers } from '@/hooks/useMembers'
 import { useAuth } from '@/hooks/useAuth'
-import { Avatar } from '@/components/ui'
+import { Avatar, EmptyState } from '@/components/ui'
 
 export default function FamilyPage() {
   const { members, isLoading } = useMembers()
@@ -32,10 +32,11 @@ export default function FamilyPage() {
             ))}
           </div>
         ) : activeMembers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3">
-            <span className="text-5xl">👨‍👩‍👧‍👦</span>
-            <p className="text-white/40 text-sm">Nessun membro trovato</p>
-          </div>
+          <EmptyState
+            icon="👨‍👩‍👧‍👦"
+            title="Nessun membro"
+            description="L'amministratore deve aggiungere i membri dalla pagina Amministrazione."
+          />
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {activeMembers.map((m) => (

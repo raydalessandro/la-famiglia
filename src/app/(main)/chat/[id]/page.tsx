@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import { useChat, useChatGroups } from '@/hooks/useChat'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, Header, useToast } from '@/components/ui'
+import { Avatar, Header, useToast, EmptyState } from '@/components/ui'
 
 const FAMILY_EMOJIS = ['❤️', '😂', '😍', '🎉', '👏', '🙏', '😊', '🥰', '😘', '👋', '😎', '🤣', '😢', '🤔', '💪', '✨']
 
@@ -182,10 +182,11 @@ export default function ChatRoomPage() {
             <div className="h-8 w-8 rounded-full border-2 border-[#E8A838] border-t-transparent animate-spin" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <span className="text-4xl">💬</span>
-            <p className="text-white/40 text-sm">Nessun messaggio. Di&apos; qualcosa!</p>
-          </div>
+          <EmptyState
+            icon="💬"
+            title="Nessun messaggio"
+            description="Scrivi il primo messaggio per iniziare la conversazione."
+          />
         ) : (
           grouped.map(({ date, msgs }) => (
             <div key={date}>

@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { useTasks } from '@/hooks/useTasks'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { BottomSheet, ParticipantPicker, Avatar, MiniAvatarStack, Button, Skeleton } from '@/components/ui'
+import { BottomSheet, ParticipantPicker, Avatar, MiniAvatarStack, Button, Skeleton, EmptyState } from '@/components/ui'
 import { CreateTaskInput, TaskWithDetails } from '@/types/database'
 
 type FilterTab = 'all' | 'mine' | 'completed'
@@ -194,21 +194,23 @@ export default function TasksPage() {
             <Skeleton key={i} className="h-16 rounded-card" />
           ))
         ) : filteredTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <span className="text-5xl mb-4">
-              {activeTab === 'completed' ? '🎉' : '✅'}
-            </span>
-            <p className="text-white/60 text-base">
-              {activeTab === 'completed'
-                ? 'Nessun compito completato.'
+          <EmptyState
+            icon={activeTab === 'completed' ? '🎉' : '✅'}
+            title={
+              activeTab === 'completed'
+                ? 'Nessun compito completato'
                 : activeTab === 'mine'
-                ? 'Nessun compito assegnato a te.'
-                : 'Nessun compito da fare!'}
-            </p>
-            {activeTab !== 'completed' && (
-              <p className="text-white/40 text-sm mt-1">Aggiungine uno con il + in basso.</p>
-            )}
-          </div>
+                ? 'Niente da fare per te'
+                : 'Tutto sotto controllo'
+            }
+            description={
+              activeTab === 'completed'
+                ? 'Quando segnerete come fatto un compito apparirà qui.'
+                : activeTab === 'mine'
+                ? 'Nessun compito è assegnato a te al momento.'
+                : 'Aggiungi un compito con il + in basso a destra.'
+            }
+          />
         ) : (
           filteredTasks.map((task) => (
             <TaskRow key={task.id} task={task} onToggle={toggleComplete} />

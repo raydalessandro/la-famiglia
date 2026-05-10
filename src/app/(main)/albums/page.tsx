@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAlbums } from '@/hooks/useAlbums'
 import { useAuth } from '@/hooks/useAuth'
-import { BottomSheet, Button, Skeleton } from '@/components/ui'
+import { BottomSheet, Button, Skeleton, EmptyState } from '@/components/ui'
 
 export default function AlbumsPage() {
   const router = useRouter()
@@ -51,19 +51,12 @@ export default function AlbumsPage() {
             ))}
           </div>
         ) : albums.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <span className="text-5xl">🖼️</span>
-            <div className="text-center">
-              <p className="text-white/60 font-medium">Nessun album ancora</p>
-              <p className="text-white/30 text-sm mt-1">Crea il primo album di famiglia</p>
-            </div>
-            <button
-              onClick={() => setSheetOpen(true)}
-              className="mt-2 rounded-full bg-[#E8A838] px-6 py-2.5 text-sm font-semibold text-[#1a1a2e] active:scale-95 transition-transform"
-            >
-              Crea album
-            </button>
-          </div>
+          <EmptyState
+            icon="🖼️"
+            title="Nessun album ancora"
+            description="Raggruppa le foto di un viaggio, un compleanno o un Natale e condividile con tutti."
+            action={<Button onClick={() => setSheetOpen(true)}>Crea il primo album</Button>}
+          />
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {albums.map((album) => (

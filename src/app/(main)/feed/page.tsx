@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
-import { Avatar, BottomSheet, Button, PostCardSkeleton } from '@/components/ui'
+import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState } from '@/components/ui'
 import { compressImage } from '@/lib/storage'
 import { PostWithDetails } from '@/types/database'
 
@@ -265,11 +265,16 @@ export default function FeedPage() {
         {isLoading && posts.length === 0 ? (
           Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)
         ) : posts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <span className="text-5xl mb-4">📝</span>
-            <p className="text-white/60 text-base">Nessun post ancora.</p>
-            <p className="text-white/40 text-sm mt-1">Sii il primo a condividere qualcosa!</p>
-          </div>
+          <EmptyState
+            icon="📝"
+            title="La bacheca è vuota"
+            description="Condividi una foto, una storia o una ricetta — sarà visibile solo alla famiglia."
+            action={
+              <Button onClick={() => setSheetOpen(true)}>
+                Scrivi il primo post
+              </Button>
+            }
+          />
         ) : (
           posts.map((post) => (
             <PostCard
