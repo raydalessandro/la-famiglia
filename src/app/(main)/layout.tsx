@@ -2,7 +2,7 @@
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useNotifications } from '@/hooks/useNotifications'
 import { BottomNav, Header, Badge } from '@/components/ui'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { processQueue } from '@/lib/offline-queue'
@@ -36,6 +36,11 @@ function HeaderActions() {
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
+
+  // Routes that own their own chrome (header + footer) and want the full
+  // viewport — the layout's chrome must step out of the way for them.
+  const isFullscreenRoute = /^\/chat\/[^/]+$/.test(pathname ?? '')
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.replace('/login')
@@ -62,6 +67,10 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       </div>
     )
   if (!isAuthenticated) return null
+
+  if (isFullscreenRoute) {
+    return <>{children}</>
+  }
 
   return (
     <div className="pb-16">

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { getWeekStart } from '@/lib/dates'
-import { ActivityWithDetails, CreateActivityInput, MemberPublic } from '@/types/database'
+import { ActivityWithDetails, CreateActivityInput, MemberPublic, ActivityAttendance } from '@/types/database'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth()
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const activityIds = activities.map((a) => a.id)
 
-  const [participantsRes, rolesRes, statusRes] = await Promise.all([
+  const [participantsRes, rolesRes, attendancesRes] = await Promise.all([
     db
       .from('activity_participants')
       .select('activity_id, member_id, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       .select('id, activity_id, member_id, role_label, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
       .in('activity_id', activityIds),
     db
-      .from('activity_weekly_status')
+      .from('activity_weekly_attendances')
       .select('*')
       .in('activity_id', activityIds)
       .eq('week_start', weekStart),
@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
   if (rolesRes.error) {
     return NextResponse.json({ data: null, error: rolesRes.error.message }, { status: 500 })
   }
-  if (statusRes.error) {
-    return NextResponse.json({ data: null, error: statusRes.error.message }, { status: 500 })
+  if (attendancesRes.error) {
+    return NextResponse.json({ data: null, error: attendancesRes.error.message }, { status: 500 })
   }
 
   const participantsByActivity: Record<string, MemberPublic[]> = {}
@@ -77,16 +77,18 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  const statusByActivity: Record<string, ActivityWithDetails['weekly_status']> = {}
-  for (const row of statusRes.data ?? []) {
-    statusByActivity[row.activity_id] = row
+  const attendancesByActivity: Record<string, ActivityAttendance[]> = {}
+  for (const row of (attendancesRes.data ?? []) as ActivityAttendance[]) {
+    if (!attendancesByActivity[row.activity_id]) attendancesByActivity[row.activity_id] = []
+    attendancesByActivity[row.activity_id].push(row)
   }
 
   const result: ActivityWithDetails[] = activities.map((activity) => ({
     ...activity,
     participants: participantsByActivity[activity.id] ?? [],
     roles: rolesByActivity[activity.id] ?? [],
-    weekly_status: statusByActivity[activity.id] ?? null,
+    attendances: attendancesByActivity[activity.id] ?? [],
+    weekly_status: null,
   }))
 
   return NextResponse.json({ data: result, error: null })
@@ -179,6 +181,7 @@ export async function POST(request: NextRequest) {
     ...activity,
     participants,
     roles: activityRoles,
+    attendances: [],
     weekly_status: null,
   }
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
-import { uploadImage } from '@/lib/storage'
+import { compressImage } from '@/lib/storage'
 import {
   ChatGroupWithDetails,
   ChatMessageWithAuthor,
@@ -204,13 +204,26 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
   const sendMediaMessage = useCallback(
     async (file: File, messageType: 'image' | 'document'): Promise<boolean> => {
       try {
-        const ext = file.name.split('.').pop() ?? 'bin'
-        const path = `${groupId}/${Date.now()}.${ext}`
-        const mediaUrl = await uploadImage('chat', file, path)
+        // For images, compress client-side to webp before upload to keep
+        // bandwidth low and dodge HEIC / unsupported MIME types. Fall back
+        // to the raw file if compression fails (e.g. on a browser that
+        // can't decode the source format).
+        let toUpload = file
+        if (messageType === 'image') {
+          try {
+            toUpload = await compressImage(file)
+          } catch {
+            // ignore — keep the original file
+          }
+        }
+
+        const formData = new FormData()
+        formData.append('file', toUpload)
+        formData.append('message_type', messageType)
+
         const res = await fetch(`/api/chat/groups/${groupId}/messages`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message_type: messageType, media_url: mediaUrl, text: '' }),
+          body: formData,
         })
         return res.ok
       } catch {

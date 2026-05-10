@@ -5,39 +5,65 @@ import { useActivities } from '@/hooks/useActivities'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
 import { Avatar, BottomSheet, IconPicker, ColorPicker, ParticipantPicker, MiniAvatarStack } from '@/components/ui'
-import { ActivityWithDetails, CreateActivityInput } from '@/types/database'
+import { ActivityWithDetails, CreateActivityInput, AttendanceStatus, MemberPublic } from '@/types/database'
 
 const DAYS_IT = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
 // day_of_week: 1=Mon, 7=Sun (matching Italian week, 0-indexed from Mon)
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 7]
 
-const STATUS_STYLES: Record<string, string> = {
+const MY_STATUS_PILL: Record<AttendanceStatus | 'pending', string> = {
   confirmed: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
-  skipped: 'bg-white/10 text-white/40 border border-white/10 line-through',
+  skipped: 'bg-white/10 text-white/50 border border-white/10',
   modified: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
   pending: 'bg-[#E8A838]/10 text-[#E8A838] border border-[#E8A838]/20',
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  confirmed: 'Confermato',
-  skipped: 'Saltato',
-  modified: 'Modificato',
-  pending: 'In attesa',
+const MY_STATUS_LABEL: Record<AttendanceStatus | 'pending', string> = {
+  confirmed: 'Tu: Confermi',
+  skipped: 'Tu: Salti',
+  modified: 'Tu: Modifichi',
+  pending: 'Devi rispondere',
 }
 
 function ActivityCard({
   activity,
-  onSetStatus,
-  onReset,
-  members,
+  currentMemberId,
+  onSetMyStatus,
+  onClearMyStatus,
 }: {
   activity: ActivityWithDetails
-  onSetStatus: (id: string, status: 'confirmed' | 'skipped' | 'modified') => void
-  onReset: (id: string) => void
-  members: ReturnType<typeof useMembers>['members']
+  currentMemberId: string | undefined
+  onSetMyStatus: (id: string, status: AttendanceStatus) => void
+  onClearMyStatus: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const status = activity.weekly_status?.status ?? 'pending'
+
+  const myAttendance = activity.attendances.find((a) => a.member_id === currentMemberId)
+  const myStatus = myAttendance?.status ?? null
+
+  // Index attendances by member_id
+  const statusOf = new Map(activity.attendances.map((a) => [a.member_id, a.status]))
+
+  // Group participants by their attendance for this week
+  const confirmed: MemberPublic[] = []
+  const skipped: MemberPublic[] = []
+  const modified: MemberPublic[] = []
+  const pending: MemberPublic[] = []
+  for (const p of activity.participants) {
+    const s = statusOf.get(p.id)
+    if (s === 'confirmed') confirmed.push(p)
+    else if (s === 'skipped') skipped.push(p)
+    else if (s === 'modified') modified.push(p)
+    else pending.push(p)
+  }
+
+  const isParticipant =
+    !!currentMemberId && activity.participants.some((p) => p.id === currentMemberId)
+
+  // Map of member_id → MemberPublic for quick lookup in expanded notes section
+  const memberById = new Map(activity.participants.map((p) => [p.id, p]))
+
+  const myPillStatus: AttendanceStatus | 'pending' = myStatus ?? 'pending'
 
   return (
     <div
@@ -58,9 +84,11 @@ function ActivityCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p className="font-semibold text-white text-sm truncate">{activity.title}</p>
-              <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${STATUS_STYLES[status]}`}>
-                {STATUS_LABELS[status]}
-              </span>
+              {isParticipant && (
+                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${MY_STATUS_PILL[myPillStatus]}`}>
+                  {MY_STATUS_LABEL[myPillStatus]}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-3 mt-1">
               {activity.time && (
@@ -80,9 +108,30 @@ function ActivityCard({
                 </span>
               )}
             </div>
+            {/* Attendance summary row */}
             {activity.participants.length > 0 && (
-              <div className="mt-2">
-                <MiniAvatarStack members={activity.participants} max={5} />
+              <div className="mt-2 flex items-center gap-3 flex-wrap">
+                {confirmed.length > 0 && (
+                  <div className="flex items-center gap-1.5" title={`${confirmed.length} confermati`}>
+                    <span className="text-emerald-400 text-xs">✓</span>
+                    <MiniAvatarStack members={confirmed} max={3} />
+                  </div>
+                )}
+                {modified.length > 0 && (
+                  <div className="flex items-center gap-1.5" title={`${modified.length} modificano`}>
+                    <span className="text-blue-400 text-xs">✏️</span>
+                    <MiniAvatarStack members={modified} max={3} />
+                  </div>
+                )}
+                {skipped.length > 0 && (
+                  <div className="flex items-center gap-1.5 opacity-60" title={`${skipped.length} saltano`}>
+                    <span className="text-white/40 text-xs">⏭</span>
+                    <MiniAvatarStack members={skipped} max={3} />
+                  </div>
+                )}
+                {confirmed.length === 0 && skipped.length === 0 && modified.length === 0 && pending.length > 0 && (
+                  <MiniAvatarStack members={pending} max={5} />
+                )}
               </div>
             )}
           </div>
@@ -95,49 +144,79 @@ function ActivityCard({
         </div>
       </button>
 
-      {/* Status buttons */}
-      <div className="px-4 pb-3 flex gap-2">
-        <button
-          onClick={() => onSetStatus(activity.id, 'confirmed')}
-          className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-            status === 'confirmed'
-              ? 'bg-emerald-500 text-white'
-              : 'bg-white/5 text-white/50 hover:bg-emerald-500/20 hover:text-emerald-300'
-          }`}
-        >
-          Confermo ✅
-        </button>
-        <button
-          onClick={() => onSetStatus(activity.id, 'skipped')}
-          className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-            status === 'skipped'
-              ? 'bg-white/20 text-white'
-              : 'bg-white/5 text-white/50 hover:bg-white/10'
-          }`}
-        >
-          Saltiamo ⏭
-        </button>
-        <button
-          onClick={() => onSetStatus(activity.id, 'modified')}
-          className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-            status === 'modified'
-              ? 'bg-blue-500 text-white'
-              : 'bg-white/5 text-white/50 hover:bg-blue-500/20 hover:text-blue-300'
-          }`}
-        >
-          Modifico ✏️
-        </button>
-      </div>
+      {/* Status buttons — only shown to participants */}
+      {isParticipant && (
+        <div className="px-4 pb-3 flex gap-2">
+          <button
+            onClick={() => onSetMyStatus(activity.id, 'confirmed')}
+            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
+              myStatus === 'confirmed'
+                ? 'bg-emerald-500 text-white'
+                : 'bg-white/5 text-white/50 hover:bg-emerald-500/20 hover:text-emerald-300'
+            }`}
+          >
+            Confermo ✅
+          </button>
+          <button
+            onClick={() => onSetMyStatus(activity.id, 'skipped')}
+            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
+              myStatus === 'skipped'
+                ? 'bg-white/20 text-white'
+                : 'bg-white/5 text-white/50 hover:bg-white/10'
+            }`}
+          >
+            Salto ⏭
+          </button>
+          <button
+            onClick={() => onSetMyStatus(activity.id, 'modified')}
+            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
+              myStatus === 'modified'
+                ? 'bg-blue-500 text-white'
+                : 'bg-white/5 text-white/50 hover:bg-blue-500/20 hover:text-blue-300'
+            }`}
+          >
+            Modifico ✏️
+          </button>
+        </div>
+      )}
 
-      {/* Expanded: roles + reset */}
+      {/* Expanded: per-status breakdown + roles + my-clear */}
       {expanded && (
         <div className="px-4 pb-4 border-t border-white/5 pt-3 flex flex-col gap-3">
+          {confirmed.length > 0 && (
+            <AttendeeRow label="Confermano" tone="emerald" members={confirmed} />
+          )}
+          {modified.length > 0 && (
+            <AttendeeRow label="Modificano" tone="blue" members={modified} />
+          )}
+          {skipped.length > 0 && (
+            <AttendeeRow label="Salteranno" tone="muted" members={skipped} />
+          )}
+          {pending.length > 0 && (
+            <AttendeeRow label="Non hanno risposto" tone="muted" members={pending} />
+          )}
+
+          {/* Modified notes from each member who modified */}
+          {activity.attendances
+            .filter((a) => a.status === 'modified' && a.modified_notes)
+            .map((a) => {
+              const m = memberById.get(a.member_id)
+              return (
+                <div key={a.id} className="bg-blue-500/10 rounded-xl px-3 py-2 border border-blue-500/20">
+                  <p className="text-blue-300 text-xs">
+                    {m && <span className="font-medium">{m.name}: </span>}
+                    {a.modified_notes}
+                  </p>
+                </div>
+              )
+            })}
+
           {activity.roles.length > 0 && (
             <div>
               <p className="text-white/40 text-xs mb-2 uppercase tracking-wide">Ruoli</p>
               <div className="flex flex-col gap-1.5">
                 {activity.roles.map((role) => {
-                  const m = members.find((mem) => mem.id === role.member_id)
+                  const m = role.member ?? memberById.get(role.member_id)
                   return (
                     <div key={role.id} className="flex items-center gap-2">
                       {m && (
@@ -159,21 +238,58 @@ function ActivityCard({
               </div>
             </div>
           )}
-          {activity.weekly_status?.modified_notes && (
-            <div className="bg-blue-500/10 rounded-xl px-3 py-2 border border-blue-500/20">
-              <p className="text-blue-300 text-xs">{activity.weekly_status.modified_notes}</p>
-            </div>
-          )}
-          {status !== 'pending' && (
+
+          {myStatus && (
             <button
-              onClick={() => onReset(activity.id)}
+              onClick={() => onClearMyStatus(activity.id)}
               className="text-white/40 text-xs hover:text-white/60 transition-colors text-left"
             >
-              Ripristina stato iniziale
+              Annulla la mia risposta
             </button>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function AttendeeRow({
+  label,
+  tone,
+  members,
+}: {
+  label: string
+  tone: 'emerald' | 'blue' | 'muted'
+  members: MemberPublic[]
+}) {
+  const toneClass =
+    tone === 'emerald'
+      ? 'text-emerald-300'
+      : tone === 'blue'
+      ? 'text-blue-300'
+      : 'text-white/50'
+  return (
+    <div>
+      <p className={`${toneClass} text-xs font-medium mb-1.5`}>
+        {label} <span className="text-white/30">({members.length})</span>
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {members.map((m) => (
+          <div
+            key={m.id}
+            className="flex items-center gap-1.5 bg-white/5 rounded-full pl-0.5 pr-2.5 py-0.5"
+          >
+            <Avatar
+              emoji={m.avatar_emoji}
+              url={m.avatar_url}
+              name={m.name}
+              color={m.color}
+              size="sm"
+            />
+            <span className="text-white/80 text-xs">{m.name.split(' ')[0]}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -191,8 +307,8 @@ const DEFAULT_FORM: CreateActivityInput = {
 }
 
 export default function ActivitiesPage() {
-  useAuth()
-  const { activities, isLoading, createActivity, setWeeklyStatus, resetWeeklyStatus } = useActivities()
+  const { member } = useAuth()
+  const { activities, isLoading, createActivity, setMyAttendance, clearMyAttendance } = useActivities()
   const { members } = useMembers()
 
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -207,16 +323,16 @@ export default function ActivitiesPage() {
     return acc
   }, {} as Record<number, ActivityWithDetails[]>)
 
-  const handleSetStatus = async (id: string, status: 'confirmed' | 'skipped' | 'modified') => {
+  const handleSetMyStatus = async (id: string, status: AttendanceStatus) => {
     if (status === 'modified') {
       setModNotesOpen(id)
       return
     }
-    await setWeeklyStatus(id, { status })
+    await setMyAttendance(id, status)
   }
 
   const handleModifiedConfirm = async (id: string) => {
-    await setWeeklyStatus(id, { status: 'modified', modified_notes: modNotes[id] ?? '' })
+    await setMyAttendance(id, 'modified', modNotes[id] ?? '')
     setModNotesOpen(null)
   }
 
@@ -268,9 +384,9 @@ export default function ActivitiesPage() {
                     <ActivityCard
                       key={activity.id}
                       activity={activity}
-                      onSetStatus={handleSetStatus}
-                      onReset={resetWeeklyStatus}
-                      members={members}
+                      currentMemberId={member?.id}
+                      onSetMyStatus={handleSetMyStatus}
+                      onClearMyStatus={clearMyAttendance}
                     />
                   ))}
                 </div>

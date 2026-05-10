@@ -2,12 +2,12 @@
  * useActivities hook — unit tests
  *
  * Bug 1 (THE appointment bug):
- *   setWeeklyStatus / resetWeeklyStatus must include `week_start` (computed
- *   client-side via getWeekStart()) in the POST body. Without it, the route
+ *   setMyAttendance / clearMyAttendance must include `week_start` (computed
+ *   client-side via getWeekStart()) in the request. Without it, the route
  *   falls back to server time (UTC on Vercel), which is the wrong week for
  *   late-Sunday-night actions in Europe/Rome.
  *
- * These tests assert that the hook sends week_start in the JSON body.
+ * These tests assert that the hook sends week_start in the JSON body / query.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -43,15 +43,15 @@ function makeFetchSpy() {
   return { fetchSpy, calls }
 }
 
-function findCall(calls: FetchCall[], substring: string): FetchCall | undefined {
-  return calls.find((c) => c.url.includes(substring) && c.init?.method === 'POST')
+function findCall(calls: FetchCall[], substring: string, method: string): FetchCall | undefined {
+  return calls.find((c) => c.url.includes(substring) && c.init?.method === method)
 }
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('useActivities — setWeeklyStatus body includes week_start', () => {
+describe('useActivities — attendance requests include week_start', () => {
   let originalFetch: typeof globalThis.fetch
 
   beforeEach(() => {
@@ -63,31 +63,28 @@ describe('useActivities — setWeeklyStatus body includes week_start', () => {
     vi.restoreAllMocks()
   })
 
-  it('setWeeklyStatus posts a body containing week_start matching getWeekStart()', async () => {
+  it('setMyAttendance posts a body containing week_start matching getWeekStart()', async () => {
     const { fetchSpy, calls } = makeFetchSpy()
     globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch
 
     const { result } = renderHook(() => useActivities())
 
-    // Wait for the initial GET to settle
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     await act(async () => {
-      await result.current.setWeeklyStatus('act-1', { status: 'confirmed' })
+      await result.current.setMyAttendance('act-1', 'confirmed')
     })
 
-    const statusCall = findCall(calls, '/api/activities/act-1/status')
-    expect(statusCall).toBeDefined()
-    expect(statusCall!.init?.body).toBeDefined()
+    const call = findCall(calls, '/api/activities/act-1/attendance', 'POST')
+    expect(call).toBeDefined()
+    expect(call!.init?.body).toBeDefined()
 
-    const body = JSON.parse(statusCall!.init!.body as string)
-
-    // THE assertion: body must include week_start matching getWeekStart()
+    const body = JSON.parse(call!.init!.body as string)
     expect(body.week_start).toBe(getWeekStart())
     expect(body.status).toBe('confirmed')
   })
 
-  it('resetWeeklyStatus posts a body containing week_start matching getWeekStart()', async () => {
+  it('clearMyAttendance sends DELETE with week_start in the query string', async () => {
     const { fetchSpy, calls } = makeFetchSpy()
     globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch
 
@@ -96,18 +93,15 @@ describe('useActivities — setWeeklyStatus body includes week_start', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     await act(async () => {
-      await result.current.resetWeeklyStatus('act-1')
+      await result.current.clearMyAttendance('act-1')
     })
 
-    const statusCall = findCall(calls, '/api/activities/act-1/status')
-    expect(statusCall).toBeDefined()
-    const body = JSON.parse(statusCall!.init!.body as string)
-
-    expect(body.week_start).toBe(getWeekStart())
-    expect(body.status).toBe('pending')
+    const call = findCall(calls, '/api/activities/act-1/attendance', 'DELETE')
+    expect(call).toBeDefined()
+    expect(call!.url).toContain(`week_start=${getWeekStart()}`)
   })
 
-  it('setWeeklyStatus preserves caller-provided modified_notes alongside week_start', async () => {
+  it('setMyAttendance preserves caller-provided modified_notes alongside week_start', async () => {
     const { fetchSpy, calls } = makeFetchSpy()
     globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch
 
@@ -116,15 +110,12 @@ describe('useActivities — setWeeklyStatus body includes week_start', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     await act(async () => {
-      await result.current.setWeeklyStatus('act-2', {
-        status: 'modified',
-        modified_notes: 'Orario cambiato',
-      })
+      await result.current.setMyAttendance('act-2', 'modified', 'Orario cambiato')
     })
 
-    const statusCall = findCall(calls, '/api/activities/act-2/status')
-    expect(statusCall).toBeDefined()
-    const body = JSON.parse(statusCall!.init!.body as string)
+    const call = findCall(calls, '/api/activities/act-2/attendance', 'POST')
+    expect(call).toBeDefined()
+    const body = JSON.parse(call!.init!.body as string)
 
     expect(body.week_start).toBe(getWeekStart())
     expect(body.status).toBe('modified')

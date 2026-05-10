@@ -98,6 +98,9 @@ export type Activity = {
 export type ActivityWithDetails = Activity & {
   participants: MemberPublic[]
   roles: ActivityRole[]
+  attendances: ActivityAttendance[]
+  /** @deprecated Replaced by `attendances`. Always null on responses
+   * from the current API; kept temporarily so old client builds don't crash. */
   weekly_status: ActivityWeeklyStatus | null
 }
 
@@ -109,6 +112,20 @@ export type ActivityRole = {
   member?: MemberPublic
 }
 
+export type AttendanceStatus = 'confirmed' | 'skipped' | 'modified'
+
+export type ActivityAttendance = {
+  id: string
+  activity_id: string
+  week_start: string
+  member_id: string
+  status: AttendanceStatus
+  modified_notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** @deprecated Use ActivityAttendance instead. */
 export type ActivityWeeklyStatus = {
   id: string
   activity_id: string
@@ -300,8 +317,15 @@ export type UpdateActivityInput = {
   roles?: { member_id: string; role_label: string }[]
 }
 
+/** @deprecated Use SetAttendanceInput. Kept temporarily for compatibility. */
 export type SetWeeklyStatusInput = {
   status: 'confirmed' | 'skipped' | 'modified' | 'pending'
+  modified_notes?: string
+}
+
+export type SetAttendanceInput = {
+  week_start: string
+  status: AttendanceStatus
   modified_notes?: string
 }
 
