@@ -36,12 +36,9 @@ async function buildPostWithDetails(
 
 // GET /api/posts?page=1&per_page=10&author_id=xxx → PaginatedResponse<PostWithDetails>
 export async function GET(req: NextRequest) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { searchParams } = new URL(req.url)
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
@@ -102,12 +99,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/posts (FormData: text, post_type, images[]) → 201 ApiResponse<PostWithDetails>
 export async function POST(req: NextRequest) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   let formData: FormData
   try {

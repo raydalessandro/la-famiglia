@@ -3,22 +3,15 @@ import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { notifyMembers } from '@/lib/notifications'
 import { getWeekStart } from '@/lib/dates'
-import {
-  ActivityWeeklyStatus,
-  SetWeeklyStatusInput,
-  ApiResponse,
-} from '@/types/database'
+import { ActivityWeeklyStatus, SetWeeklyStatusInput } from '@/types/database'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResponse<ActivityWeeklyStatus | null>>> {
-  let currentMember
-  try {
-    currentMember = await requireAuth()
-  } catch (res) {
-    return res as NextResponse<ApiResponse<ActivityWeeklyStatus | null>>
-  }
+) {
+  const currentMember = await requireAuth()
+
+  if (currentMember instanceof NextResponse) return currentMember
 
   const { id } = await params
   const db = createServerClient()

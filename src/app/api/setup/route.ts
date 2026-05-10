@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/client'
 import { hashPin, createSession, toPublicMember } from '@/lib/auth'
-import { ApiResponse, MemberPublic, SetupInput } from '@/types/database'
+import { SetupInput } from '@/types/database'
 
 // GET /api/setup — check if setup is done
-export async function GET(): Promise<NextResponse<ApiResponse<{ setup_completed: boolean }>>> {
+export async function GET() {
   const db = createServerClient()
 
   const { data } = await db
@@ -19,7 +19,7 @@ export async function GET(): Promise<NextResponse<ApiResponse<{ setup_completed:
 }
 
 // POST /api/setup — create first admin member
-export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<{ member: MemberPublic }>>> {
+export async function POST(request: NextRequest) {
   const db = createServerClient()
 
   // 1. Check no admin exists already

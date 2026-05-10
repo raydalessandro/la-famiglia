@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -343,8 +343,8 @@ describe('GET /api/activities', () => {
   })
 
   it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { GET } = await import('@/app/api/activities/route')
@@ -519,8 +519,8 @@ describe('POST /api/activities', () => {
   })
 
   it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { POST } = await import('@/app/api/activities/route')
@@ -632,8 +632,8 @@ describe('GET /api/activities/:id', () => {
   })
 
   it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { GET } = await import('@/app/api/activities/[id]/route')
@@ -774,8 +774,8 @@ describe('PATCH /api/activities/:id', () => {
   })
 
   it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { PATCH } = await import('@/app/api/activities/[id]/route')
@@ -841,8 +841,8 @@ describe('DELETE /api/activities/:id', () => {
   })
 
   it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { DELETE } = await import('@/app/api/activities/[id]/route')
@@ -1035,8 +1035,8 @@ describe('POST /api/activities/:id/status', () => {
   })
 
   it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { POST } = await import('@/app/api/activities/[id]/status/route')
@@ -1117,8 +1117,8 @@ describe('GET /api/activities/:id/roles', () => {
   })
 
   it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { GET } = await import('@/app/api/activities/[id]/roles/route')
@@ -1254,8 +1254,8 @@ describe('PUT /api/activities/:id/roles', () => {
   })
 
   it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { PUT } = await import('@/app/api/activities/[id]/roles/route')
@@ -1295,8 +1295,8 @@ describe('ApiResponse shape invariants', () => {
   })
 
   it('all error responses have { data: null, error: <string> }', async () => {
-    mockRequireAuth.mockRejectedValue(
-      new Response(JSON.stringify({ data: null, error: 'Non autenticato' }), { status: 401 })
+    mockRequireAuth.mockResolvedValue(
+      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
     )
 
     const { GET } = await import('@/app/api/activities/route')

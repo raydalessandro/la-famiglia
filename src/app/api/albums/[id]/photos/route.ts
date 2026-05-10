@@ -9,11 +9,9 @@ type RouteContext = { params: Promise<{ id: string }> }
 // GET /api/albums/:id/photos → ApiResponse<AlbumPhoto[]>
 // Returns photos for the album ordered by created_at
 export async function GET(_req: NextRequest, { params }: RouteContext) {
-  try {
-    await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const { id: albumId } = await params
   const db = createServerClient()
@@ -34,12 +32,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 // POST /api/albums/:id/photos (FormData: image, caption?) → 201 ApiResponse<AlbumPhoto>
 // Uploads image to storage, inserts photo record, updates cover if first photo
 export async function POST(req: NextRequest, { params }: RouteContext) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id: albumId } = await params
 

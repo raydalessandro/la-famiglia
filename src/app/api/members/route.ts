@@ -7,11 +7,9 @@ import { CreateMemberInput } from '@/types/database'
 // Returns all active members ordered by name
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(_req: NextRequest) {
-  try {
-    await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const db = createServerClient()
   const { data: members, error } = await db
@@ -31,11 +29,9 @@ export async function GET(_req: NextRequest) {
 // POST /api/members (admin only) → 201 ApiResponse<MemberPublic>
 // Body: CreateMemberInput { name, avatar_emoji?, family_role, pin, bio?, color?, is_admin? }
 export async function POST(req: NextRequest) {
-  try {
-    await requireAdmin()
-  } catch (response) {
-    return response as Response
-  }
+  const auth = await requireAdmin()
+
+  if (auth instanceof NextResponse) return auth
 
   let body: CreateMemberInput
   try {

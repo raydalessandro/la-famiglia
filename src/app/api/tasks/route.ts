@@ -5,11 +5,9 @@ import { notifyMembers } from '@/lib/notifications'
 
 // GET /api/tasks?assignee_id=xxx&completed=false → ApiResponse<Task[]>
 export async function GET(req: NextRequest) {
-  try {
-    await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const { searchParams } = new URL(req.url)
   const assigneeId = searchParams.get('assignee_id')
@@ -68,12 +66,9 @@ export async function GET(req: NextRequest) {
 // POST /api/tasks → 201 ApiResponse<Task>
 // Body: { title, description?, due_date?, assignee_ids? }
 export async function POST(req: NextRequest) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   let body: {
     title: string

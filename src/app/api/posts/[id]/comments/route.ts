@@ -8,11 +8,9 @@ type RouteContext = { params: Promise<{ id: string }> }
 
 // GET /api/posts/:id/comments → ApiResponse<PostCommentWithAuthor[]>
 export async function GET(_req: NextRequest, { params }: RouteContext) {
-  try {
-    await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const { id: post_id } = await params
 
@@ -42,12 +40,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 // POST /api/posts/:id/comments { text } → 201 ApiResponse<PostCommentWithAuthor>
 // EFFECT: notify post author if commenter != author
 export async function POST(req: NextRequest, { params }: RouteContext) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id: post_id } = await params
 

@@ -7,12 +7,9 @@ type RouteContext = { params: Promise<{ id: string }> }
 
 // POST /api/posts/:id/like → ApiResponse<{ liked: boolean }> (toggle)
 export async function POST(_req: NextRequest, { params }: RouteContext) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id: post_id } = await params
 

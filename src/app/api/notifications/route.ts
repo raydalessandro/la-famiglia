@@ -6,12 +6,9 @@ import { createServerClient } from '@/lib/supabase/client'
 // Returns notifications for the authenticated member, newest first
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(_req: NextRequest) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const db = createServerClient()
 
@@ -32,12 +29,9 @@ export async function GET(_req: NextRequest) {
 // Body: { notification_ids: string[] } | { all: true }
 // Marks notifications as read
 export async function PATCH(req: NextRequest) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   let body: { notification_ids?: string[]; all?: boolean }
   try {

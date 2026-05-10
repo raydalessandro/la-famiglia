@@ -8,12 +8,9 @@ type RouteContext = { params: Promise<{ id: string }> }
 
 // DELETE /api/posts/:id → ApiResponse<null> (author or admin only)
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
-  let member: Member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { id } = await params
 

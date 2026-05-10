@@ -19,11 +19,9 @@ const NON_ADMIN_ALLOWED_FIELDS: (keyof UpdateMemberInput | 'new_pin')[] = [
 
 // GET /api/members/:id → ApiResponse<MemberPublic>
 export async function GET(_req: NextRequest, { params }: RouteContext) {
-  try {
-    await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const { id } = await params
 
@@ -45,12 +43,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 // PATCH /api/members/:id (admin or self) → ApiResponse<MemberPublic>
 // Body: UpdateMemberInput & { new_pin?: string }
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
-  let currentMember
-  try {
-    currentMember = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const currentMember = await requireAuth()
+
+  if (currentMember instanceof NextResponse) return currentMember
 
   const { id } = await params
   const isAdmin = currentMember.is_admin
@@ -129,12 +124,9 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 // DELETE /api/members/:id (admin only) → ApiResponse<null>
 // Soft delete: sets is_active = false. Cannot delete self.
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {
-  let currentMember
-  try {
-    currentMember = await requireAdmin()
-  } catch (response) {
-    return response as Response
-  }
+  const currentMember = await requireAdmin()
+
+  if (currentMember instanceof NextResponse) return currentMember
 
   const { id } = await params
 

@@ -5,12 +5,9 @@ import { notifyMembers } from '@/lib/notifications'
 
 // GET /api/events?month=4&year=2026 → ApiResponse<Event[]>
 export async function GET(req: NextRequest) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const { searchParams } = new URL(req.url)
   const month = parseInt(searchParams.get('month') ?? String(new Date().getMonth() + 1), 10)
@@ -48,12 +45,9 @@ export async function GET(req: NextRequest) {
 // POST /api/events → 201 ApiResponse<CalendarEventWithDetails>
 // Body: CreateEventInput { title, icon?, color?, event_date, event_time?, location?, notes?, participant_ids? }
 export async function POST(req: NextRequest) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   let body: {
     title: string

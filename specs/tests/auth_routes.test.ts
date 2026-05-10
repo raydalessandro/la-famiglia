@@ -72,6 +72,8 @@ vi.mock('../../src/lib/auth', () => ({
   requireAuth: vi.fn(),
   verifyPin: vi.fn(),
   hashPin: vi.fn(),
+  needsRehash: vi.fn(() => false),
+  rehashPinIfNeeded: vi.fn(async () => undefined),
   createSession: vi.fn(),
   deleteSession: vi.fn(),
   validateSession: vi.fn(),

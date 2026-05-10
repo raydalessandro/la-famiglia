@@ -1,21 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
-import {
-  ActivityRole,
-  ApiResponse,
-  MemberPublic,
-} from '@/types/database'
+import { ActivityRole, MemberPublic } from '@/types/database'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResponse<ActivityRole[]>>> {
-  try {
-    await requireAuth()
-  } catch (res) {
-    return res as NextResponse<ApiResponse<ActivityRole[]>>
-  }
+) {
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
 
   const { id } = await params
   const db = createServerClient()
@@ -43,13 +37,10 @@ export async function GET(
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse<ApiResponse<ActivityRole[]>>> {
-  let currentMember
-  try {
-    currentMember = await requireAuth()
-  } catch (res) {
-    return res as NextResponse<ApiResponse<ActivityRole[]>>
-  }
+) {
+  const currentMember = await requireAuth()
+
+  if (currentMember instanceof NextResponse) return currentMember
 
   const { id } = await params
   const db = createServerClient()

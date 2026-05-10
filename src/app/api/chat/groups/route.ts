@@ -6,12 +6,9 @@ import { createServerClient } from '@/lib/supabase/client'
 // Returns groups where the authenticated member is a participant
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(_req: NextRequest) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   const db = createServerClient()
 
@@ -95,12 +92,9 @@ export async function GET(_req: NextRequest) {
 // POST /api/chat/groups → 201 ApiResponse<ChatGroup>
 // Body: CreateChatGroupInput { name, member_ids, is_direct?, icon? }
 export async function POST(req: NextRequest) {
-  let member
-  try {
-    member = await requireAuth()
-  } catch (response) {
-    return response as Response
-  }
+  const member = await requireAuth()
+
+  if (member instanceof NextResponse) return member
 
   let body: { name: string; member_ids: string[]; is_direct?: boolean; icon?: string }
   try {
