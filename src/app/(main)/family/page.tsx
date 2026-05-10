@@ -42,7 +42,7 @@ export default function FamilyPage() {
               <Link
                 key={m.id}
                 href={`/family/${m.id}`}
-                className="group relative flex flex-col items-center gap-3 rounded-2xl bg-white/5 p-5 transition-all active:scale-95 hover:bg-white/10"
+                className="group relative flex flex-col items-center gap-3 rounded-card bg-surface-raised border border-white/5 p-5 transition-all active:scale-95 hover:bg-surface-high"
               >
                 {/* "You" badge */}
                 {m.id === me?.id && (

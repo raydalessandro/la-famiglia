@@ -383,6 +383,7 @@ function MemberRow({ member, isMe, inactive, deactivating, onResetPin, onDeactiv
         name={member.name}
         size="sm"
         color={member.color}
+        ringed={!inactive}
       />
 
       <div className="flex-1 min-w-0">

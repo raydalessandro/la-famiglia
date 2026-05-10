@@ -270,13 +270,13 @@ export default function CalendarPage() {
                     {dayEvents.map((ev) => (
                       <div
                         key={ev.id}
-                        className="flex items-start gap-3 bg-white/5 rounded-xl px-3 py-3 border border-white/5"
+                        className="flex items-start gap-3 bg-surface-raised rounded-card px-3 py-3 border border-white/5"
                         style={{ borderLeft: `3px solid ${ev.color || '#E8A838'}` }}
                       >
-                        <span className="text-lg">{ev.icon || '📅'}</span>
+                        <span className="text-2xl">{ev.icon || '📅'}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium text-sm">{ev.title}</p>
-                          {ev.event_time && <p className="text-white/40 text-xs mt-0.5">{ev.event_time}</p>}
+                          <p className="text-white font-semibold text-body">{ev.title}</p>
+                          {ev.event_time && <p className="text-white/50 text-[13px] mt-0.5">{ev.event_time}</p>}
                           {ev.location && <p className="text-white/40 text-xs">{ev.location}</p>}
                         </div>
                       </div>

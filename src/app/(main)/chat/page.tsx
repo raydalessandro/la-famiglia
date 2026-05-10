@@ -60,6 +60,7 @@ function GroupRow({
             name={displayName}
             size="md"
             color={displayColor ?? '#E8A838'}
+            ringed
           />
         ) : (
           <div

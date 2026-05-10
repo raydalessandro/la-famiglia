@@ -22,11 +22,17 @@ function TaskRow({
   task: TaskWithDetails
   onToggle: (id: string) => void
 }) {
+  // Stripe = identity colour of the first assignee (fallback creator/accent).
+  // Cozi-style colour-per-member at a glance: "ah, è di Marco".
+  const stripeColor =
+    task.assignees[0]?.color || task.creator?.color || '#E8A838'
+
   return (
     <div
-      className={`flex items-start gap-3 bg-[#16213e] rounded-2xl px-4 py-3.5 border border-white/5 transition-opacity ${
+      className={`flex items-start gap-3 bg-surface-raised rounded-card px-4 py-3.5 border border-white/5 transition-opacity ${
         task.is_completed ? 'opacity-50' : ''
       }`}
+      style={{ borderLeft: `3px solid ${stripeColor}` }}
     >
       {/* Checkbox — 24px visual, 44px tappable area via negative margin trick.
        * Apple HIG / Material accessible target floor is 44pt; for older

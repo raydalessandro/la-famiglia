@@ -70,7 +70,7 @@ export default function AlbumsPage() {
               <Link
                 key={album.id}
                 href={`/albums/${album.id}`}
-                className="group relative flex flex-col rounded-2xl bg-white/5 overflow-hidden transition-all active:scale-95 hover:bg-white/10"
+                className="group relative flex flex-col rounded-card bg-surface-raised border border-white/5 overflow-hidden transition-all active:scale-95 hover:bg-surface-high"
               >
                 {/* Cover image */}
                 <div className="h-32 w-full bg-white/5 overflow-hidden">

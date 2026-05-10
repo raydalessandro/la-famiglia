@@ -46,7 +46,10 @@ function PostCard({
   const typeLabel = POST_TYPE_LABELS[post.post_type]
 
   return (
-    <article className="bg-[#16213e] rounded-2xl overflow-hidden border border-white/5">
+    <article
+      className="bg-surface-raised rounded-card overflow-hidden border border-white/5"
+      style={{ borderLeft: `3px solid ${post.author.color || '#E8A838'}` }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div className="flex items-center gap-3 min-w-0">
@@ -56,6 +59,7 @@ function PostCard({
             name={post.author.name}
             size="sm"
             color={post.author.color}
+            ringed
           />
           <div className="min-w-0">
             <p className="font-semibold text-white text-[15px] leading-tight">{post.author.name}</p>
