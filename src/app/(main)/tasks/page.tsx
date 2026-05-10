@@ -28,27 +28,33 @@ function TaskRow({
         task.is_completed ? 'opacity-50' : ''
       }`}
     >
-      {/* Checkbox */}
+      {/* Checkbox — 24px visual, 44px tappable area via negative margin trick.
+       * Apple HIG / Material accessible target floor is 44pt; for older
+       * users we want the tappable surface comfortably above that. */}
       <button
         onClick={() => onToggle(task.id)}
-        className="mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
-        style={{
-          borderColor: task.is_completed ? '#E8A838' : 'rgba(255,255,255,0.2)',
-          backgroundColor: task.is_completed ? '#E8A838' : 'transparent',
-        }}
+        className="shrink-0 -m-2.5 p-2.5 flex items-center justify-center transition-all"
         aria-label={task.is_completed ? 'Segna come da fare' : 'Segna come completato'}
       >
-        {task.is_completed && (
-          <svg className="w-3 h-3 text-[#1a1a2e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        )}
+        <span
+          className="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+          style={{
+            borderColor: task.is_completed ? '#E8A838' : 'rgba(255,255,255,0.2)',
+            backgroundColor: task.is_completed ? '#E8A838' : 'transparent',
+          }}
+        >
+          {task.is_completed && (
+            <svg className="w-4 h-4 text-[#1a1a2e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </span>
       </button>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         <p
-          className={`text-sm font-medium leading-tight ${
+          className={`text-body font-medium ${
             task.is_completed ? 'line-through text-white/30' : 'text-white'
           }`}
         >

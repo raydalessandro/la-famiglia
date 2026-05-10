@@ -14,7 +14,7 @@ export function Header({ title = 'La Famiglia', showBack, rightAction }: HeaderP
 
   return (
     <header
-      className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[#1a1a2e] px-4"
+      className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-surface/95 backdrop-blur px-4"
       style={{
         // Header sits below the notch; viewport-fit=cover makes the inset
         // non-zero on iOS PWAs. Total visible height = 56px (h-14) + inset.

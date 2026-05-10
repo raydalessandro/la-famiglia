@@ -73,7 +73,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="pb-16">
+    // pb reserves room for BottomNav (min-h-touch=44 + py-2*2=16 + label) plus
+    // the iPhone home-bar safe area, so content never hides behind the bar.
+    <div className="pb-[calc(5rem+env(safe-area-inset-bottom))]">
       <Header rightAction={<HeaderActions />} />
       <main className="px-4 py-2">{children}</main>
       <BottomNav />

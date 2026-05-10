@@ -58,7 +58,7 @@ function PostCard({
             color={post.author.color}
           />
           <div className="min-w-0">
-            <p className="font-semibold text-white text-sm leading-tight">{post.author.name}</p>
+            <p className="font-semibold text-white text-[15px] leading-tight">{post.author.name}</p>
             <p className="text-white/40 text-xs">{formatRelativeTime(post.created_at)}</p>
           </div>
         </div>
@@ -84,7 +84,7 @@ function PostCard({
 
       {/* Text */}
       {post.text && (
-        <p className="px-4 pb-3 text-white/90 text-sm leading-relaxed whitespace-pre-wrap">{post.text}</p>
+        <p className="px-4 pb-3 text-white/90 text-body whitespace-pre-wrap">{post.text}</p>
       )}
 
       {/* Images */}
@@ -334,7 +334,7 @@ export default function FeedPage() {
             onChange={(e) => setFormText(e.target.value)}
             placeholder="Scrivi qualcosa..."
             rows={4}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm resize-none focus:outline-none focus:border-[#E8A838]/60"
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-body resize-none focus:outline-none focus:border-[#E8A838]/60"
           />
 
           {/* Image previews */}

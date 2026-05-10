@@ -233,7 +233,7 @@ export default function ChatRoomPage() {
 
                       {/* Bubble */}
                       <div
-                        className={`rounded-2xl text-sm leading-relaxed break-words overflow-hidden ${
+                        className={`rounded-2xl text-body break-words overflow-hidden ${
                           isOwn
                             ? 'bg-[#E8A838] text-[#1a1a2e] font-medium rounded-tr-sm'
                             : 'bg-white/10 text-white rounded-tl-sm'
@@ -333,7 +333,7 @@ export default function ChatRoomPage() {
             onKeyDown={handleKeyDown}
             placeholder="Scrivi un messaggio…"
             rows={1}
-            className="flex-1 resize-none rounded-2xl bg-white/10 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:ring-1 focus:ring-[#E8A838] max-h-32 leading-relaxed"
+            className="flex-1 resize-none rounded-2xl bg-white/10 px-4 py-2.5 text-body text-white placeholder-white/30 outline-none focus:ring-1 focus:ring-[#E8A838] max-h-32"
             style={{ height: 'auto' }}
             onInput={(e) => {
               const el = e.currentTarget
