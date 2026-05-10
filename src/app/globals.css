@@ -17,4 +17,31 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Safe-area helpers — iOS notch / home bar.
+   * `viewport-fit=cover` (set in app/layout.tsx viewport) is required for
+   * env(safe-area-inset-*) to return non-zero. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  /* Compose existing padding + safe-inset (e.g. py-3 + safe). Use these
+   * when you want padding to grow only on devices with insets. */
+  .pt-safe-plus-3 {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  }
+  .pb-safe-plus-3 {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+  }
 }

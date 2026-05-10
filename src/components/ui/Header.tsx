@@ -13,7 +13,15 @@ export function Header({ title = 'La Famiglia', showBack, rightAction }: HeaderP
   const router = useRouter()
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-white/10 bg-[#1a1a2e] px-4">
+    <header
+      className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[#1a1a2e] px-4"
+      style={{
+        // Header sits below the notch; viewport-fit=cover makes the inset
+        // non-zero on iOS PWAs. Total visible height = 56px (h-14) + inset.
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        height: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+      }}
+    >
       {/* Left: back button or spacer */}
       <div className="w-10">
         {showBack && (

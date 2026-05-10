@@ -78,12 +78,12 @@ const fakeRole = {
   member: fakeMemberPublic,
 }
 
-const fakeWeeklyStatus = {
-  id: 'ws-1',
+const fakeAttendance = {
+  id: 'att-1',
   activity_id: 'act-1',
   week_start: '2026-03-30',
+  member_id: 'member-1',
   status: 'confirmed' as const,
-  confirmed_by: 'member-1',
   modified_notes: null,
   created_at: '2026-03-30T00:00:00Z',
   updated_at: '2026-03-30T00:00:00Z',
@@ -93,7 +93,8 @@ const fakeActivityWithDetails = {
   ...fakeActivity,
   participants: [fakeMemberPublic],
   roles: [fakeRole],
-  weekly_status: fakeWeeklyStatus,
+  attendances: [fakeAttendance],
+  weekly_status: null,
 }
 
 // ---------------------------------------------------------------------------
@@ -107,14 +108,12 @@ function makeMockDb(overrides: Record<string, unknown> = {}) {
     activitiesSelect: { data: [], error: null },
     participantsSelect: { data: [], error: null },
     rolesSelect: { data: [], error: null },
-    statusSelect: { data: null, error: null },
+    statusSelect: { data: [], error: null },
     activityInsert: { data: fakeActivity, error: null },
     participantsInsert: { data: [], error: null },
     rolesInsert: { data: [], error: null },
     activityUpdate: { data: null, error: null },
     activityDelete: { data: null, error: null },
-    weeklyStatusUpsert: { data: fakeWeeklyStatus, error: null },
-    weeklyStatusDelete: { data: null, error: null },
   }
 
   const cfg = { ...defaults, ...overrides }
@@ -210,7 +209,7 @@ function makeMockDb(overrides: Record<string, unknown> = {}) {
         return b
       }
 
-      case 'activity_weekly_status': {
+      case 'activity_weekly_attendances': {
         const b: Record<string, (...args: unknown[]) => unknown> = {}
         b.select = vi.fn(() => {
           const inner: Record<string, (...args: unknown[]) => unknown> = {}
@@ -221,20 +220,6 @@ function makeMockDb(overrides: Record<string, unknown> = {}) {
           ;(inner as unknown as Promise<unknown>).then = (
             resolve: (v: unknown) => unknown
           ) => Promise.resolve(cfg.statusSelect).then(resolve)
-          return inner
-        })
-        b.upsert = vi.fn(() => {
-          const inner: Record<string, (...args: unknown[]) => unknown> = {}
-          inner.select = vi.fn(() => inner)
-          inner.single = vi.fn(() => Promise.resolve(cfg.weeklyStatusUpsert))
-          return inner
-        })
-        b.delete = vi.fn(() => {
-          const inner: Record<string, (...args: unknown[]) => unknown> = {}
-          inner.eq = vi.fn(() => inner)
-          ;(inner as unknown as Promise<unknown>).then = (
-            resolve: (v: unknown) => unknown
-          ) => Promise.resolve(cfg.weeklyStatusDelete).then(resolve)
           return inner
         })
         return b
@@ -306,13 +291,13 @@ describe('GET /api/activities', () => {
   it('returns 200 with ApiResponse<ActivityWithDetails[]> shape', async () => {
     const participantRow = { activity_id: 'act-1', member_id: 'member-1', members: fakeMemberPublic }
     const roleRow = { ...fakeRole, members: fakeMemberPublic }
-    const statusRow = fakeWeeklyStatus
+    const attendanceRow = fakeAttendance
 
     const db = makeMockDb({
       activitiesSelect: { data: [fakeActivity], error: null },
       participantsSelect: { data: [participantRow], error: null },
       rolesSelect: { data: [roleRow], error: null },
-      statusSelect: { data: [statusRow], error: null },
+      statusSelect: { data: [attendanceRow], error: null },
     })
 
     // The route calls .in() on participants, roles, and status, and .eq('is_active',true) + .order() on activities
@@ -372,7 +357,7 @@ describe('GET /api/activities', () => {
     expect(typeof json.error).toBe('string')
   })
 
-  it('uses week_start param for weekly_status lookup', async () => {
+  it('uses week_start param for attendance lookup', async () => {
     const db = makeMockDb({
       activitiesSelect: { data: [fakeActivity], error: null },
       participantsSelect: { data: [], error: null },
@@ -455,7 +440,8 @@ describe('POST /api/activities', () => {
     })
     expect(Array.isArray(json.data.participants)).toBe(true)
     expect(Array.isArray(json.data.roles)).toBe(true)
-    expect(json.data.weekly_status).toBeNull()
+    expect(Array.isArray(json.data.attendances)).toBe(true)
+    expect(json.data.attendances).toEqual([])
   })
 
   it('returns 400 when title is missing', async () => {
@@ -601,7 +587,7 @@ describe('GET /api/activities/:id', () => {
       activitiesSelect: { data: fakeActivity, error: null },
       participantsSelect: { data: [participantRow], error: null },
       rolesSelect: { data: [roleRow], error: null },
-      statusSelect: { data: fakeWeeklyStatus, error: null },
+      statusSelect: { data: [fakeAttendance], error: null },
     })
     mockCreateServerClient.mockReturnValue(db)
 
@@ -644,12 +630,12 @@ describe('GET /api/activities/:id', () => {
     expect(res.status).toBe(401)
   })
 
-  it('includes weekly_status null when no status record exists', async () => {
+  it('includes attendances:[] when no attendance records exist', async () => {
     const db = makeMockDb({
       activitiesSelect: { data: fakeActivity, error: null },
       participantsSelect: { data: [], error: null },
       rolesSelect: { data: [], error: null },
-      statusSelect: { data: null, error: null },
+      statusSelect: { data: [], error: null },
     })
     mockCreateServerClient.mockReturnValue(db)
 
@@ -659,6 +645,7 @@ describe('GET /api/activities/:id', () => {
 
     expect(res.status).toBe(200)
     const json = await res.json()
+    expect(json.data.attendances).toEqual([])
     expect(json.data.weekly_status).toBeNull()
   })
 })
@@ -849,202 +836,6 @@ describe('DELETE /api/activities/:id', () => {
     const { DELETE } = await import('@/app/api/activities/[id]/route')
     const req = makeRequest('DELETE', 'http://localhost/api/activities/act-1')
     const res = await DELETE(req, { params: Promise.resolve({ id: 'act-1' }) })
-
-    expect(res.status).toBe(401)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Tests: POST /api/activities/:id/status
-// ---------------------------------------------------------------------------
-
-describe('POST /api/activities/:id/status', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockRequireAuth.mockResolvedValue(fakeMember)
-    mockNotifyMembers.mockResolvedValue(undefined)
-  })
-
-  it('returns 200 with ActivityWeeklyStatus on confirmed status', async () => {
-    const db = makeMockDb({
-      activitiesSelect: { data: { id: 'act-1', title: 'Nuoto' }, error: null },
-      weeklyStatusUpsert: { data: fakeWeeklyStatus, error: null },
-      participantsSelect: { data: [{ member_id: 'member-2' }], error: null },
-    })
-    mockCreateServerClient.mockReturnValue(db)
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/act-1/status', {
-      status: 'confirmed',
-      week_start: '2026-03-30',
-    })
-    const res = await POST(req, { params: Promise.resolve({ id: 'act-1' }) })
-
-    expect(res.status).toBe(200)
-    const json = await res.json()
-    expect(json.error).toBeNull()
-    expect(json.data).toMatchObject({
-      activity_id: 'act-1',
-      status: 'confirmed',
-    })
-  })
-
-  it('returns 200 with ActivityWeeklyStatus on skipped status', async () => {
-    const skippedStatus = { ...fakeWeeklyStatus, status: 'skipped' }
-    const db = makeMockDb({
-      activitiesSelect: { data: { id: 'act-1', title: 'Nuoto' }, error: null },
-      weeklyStatusUpsert: { data: skippedStatus, error: null },
-      participantsSelect: { data: [], error: null },
-    })
-    mockCreateServerClient.mockReturnValue(db)
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/act-1/status', {
-      status: 'skipped',
-      week_start: '2026-03-30',
-    })
-    const res = await POST(req, { params: Promise.resolve({ id: 'act-1' }) })
-
-    expect(res.status).toBe(200)
-    const json = await res.json()
-    expect(json.data).toMatchObject({ status: 'skipped' })
-  })
-
-  it('returns 200 with ActivityWeeklyStatus on modified status with notes', async () => {
-    const modifiedStatus = {
-      ...fakeWeeklyStatus,
-      status: 'modified',
-      modified_notes: 'Orario cambiato a 10:00',
-    }
-    const db = makeMockDb({
-      activitiesSelect: { data: { id: 'act-1', title: 'Nuoto' }, error: null },
-      weeklyStatusUpsert: { data: modifiedStatus, error: null },
-      participantsSelect: { data: [{ member_id: 'member-2' }], error: null },
-    })
-    mockCreateServerClient.mockReturnValue(db)
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/act-1/status', {
-      status: 'modified',
-      modified_notes: 'Orario cambiato a 10:00',
-      week_start: '2026-03-30',
-    })
-    const res = await POST(req, { params: Promise.resolve({ id: 'act-1' }) })
-
-    expect(res.status).toBe(200)
-    const json = await res.json()
-    expect(json.data).toMatchObject({
-      status: 'modified',
-      modified_notes: 'Orario cambiato a 10:00',
-    })
-  })
-
-  it('status=pending → deletes weekly_status record and returns { data: null }', async () => {
-    const db = makeMockDb({
-      activitiesSelect: { data: { id: 'act-1', title: 'Nuoto' }, error: null },
-      weeklyStatusDelete: { data: null, error: null },
-    })
-    mockCreateServerClient.mockReturnValue(db)
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/act-1/status', {
-      status: 'pending',
-      week_start: '2026-03-30',
-    })
-    const res = await POST(req, { params: Promise.resolve({ id: 'act-1' }) })
-
-    expect(res.status).toBe(200)
-    const json = await res.json()
-    expect(json).toEqual({ data: null, error: null })
-  })
-
-  it('notifies participants excluding the actor on non-pending status', async () => {
-    const db = makeMockDb({
-      activitiesSelect: { data: { id: 'act-1', title: 'Nuoto' }, error: null },
-      weeklyStatusUpsert: { data: fakeWeeklyStatus, error: null },
-      participantsSelect: { data: [{ member_id: 'member-2' }, { member_id: 'member-1' }], error: null },
-    })
-    mockCreateServerClient.mockReturnValue(db)
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/act-1/status', {
-      status: 'confirmed',
-      week_start: '2026-03-30',
-    })
-    await POST(req, { params: Promise.resolve({ id: 'act-1' }) })
-
-    // notifyMembers should be called with only member-2 (member-1 is the actor)
-    expect(mockNotifyMembers).toHaveBeenCalledOnce()
-    const [memberIds] = mockNotifyMembers.mock.calls[0]
-    expect(memberIds).toContain('member-2')
-    expect(memberIds).not.toContain('member-1')
-  })
-
-  it('does not call notifyMembers when no other participants', async () => {
-    const db = makeMockDb({
-      activitiesSelect: { data: { id: 'act-1', title: 'Nuoto' }, error: null },
-      weeklyStatusUpsert: { data: fakeWeeklyStatus, error: null },
-      participantsSelect: { data: [{ member_id: 'member-1' }], error: null },
-    })
-    mockCreateServerClient.mockReturnValue(db)
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/act-1/status', {
-      status: 'confirmed',
-      week_start: '2026-03-30',
-    })
-    await POST(req, { params: Promise.resolve({ id: 'act-1' }) })
-
-    expect(mockNotifyMembers).not.toHaveBeenCalled()
-  })
-
-  it('returns 404 when activity does not exist', async () => {
-    mockCreateServerClient.mockReturnValue(
-      makeMockDb({
-        activitiesSelect: { data: null, error: { message: 'not found' } },
-      })
-    )
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/nonexistent/status', {
-      status: 'confirmed',
-    })
-    const res = await POST(req, { params: Promise.resolve({ id: 'nonexistent' }) })
-
-    expect(res.status).toBe(404)
-    const json = await res.json()
-    expect(json.data).toBeNull()
-  })
-
-  it('returns 400 when status field is missing', async () => {
-    mockCreateServerClient.mockReturnValue(
-      makeMockDb({
-        activitiesSelect: { data: { id: 'act-1', title: 'Nuoto' }, error: null },
-      })
-    )
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/act-1/status', {
-      week_start: '2026-03-30',
-    })
-    const res = await POST(req, { params: Promise.resolve({ id: 'act-1' }) })
-
-    expect(res.status).toBe(400)
-    const json = await res.json()
-    expect(json.data).toBeNull()
-    expect(typeof json.error).toBe('string')
-  })
-
-  it('returns 401 when not authenticated', async () => {
-    mockRequireAuth.mockResolvedValue(
-      NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
-    )
-
-    const { POST } = await import('@/app/api/activities/[id]/status/route')
-    const req = makeRequest('POST', 'http://localhost/api/activities/act-1/status', {
-      status: 'confirmed',
-    })
-    const res = await POST(req, { params: Promise.resolve({ id: 'act-1' }) })
 
     expect(res.status).toBe(401)
   })

@@ -23,6 +23,7 @@ export default function ChatRoomPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [uploadingMedia, setUploadingMedia] = useState(false)
+  const [mediaError, setMediaError] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
@@ -31,6 +32,7 @@ export default function ChatRoomPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const prevScrollHeight = useRef(0)
+  const hasScrolledToBottom = useRef(false)
 
   const group = groups.find((g) => g.id === groupId)
 
@@ -46,9 +48,17 @@ export default function ChatRoomPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showEmojiPicker])
 
-  // Auto-scroll to bottom on new messages (but not when loading older ones)
+  // Auto-scroll to bottom on new messages (but not when loading older ones).
+  // First time: jump immediately so the freshest message lines up against the
+  // input bar (smooth scroll on mount races with layout and can leave the
+  // view stuck mid-page, which looks like the messages are "cut off").
   useEffect(() => {
-    if (!loadingMore) {
+    if (loadingMore || messages.length === 0) return
+    if (!listRef.current) return
+    if (!hasScrolledToBottom.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight
+      hasScrolledToBottom.current = true
+    } else {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages, loadingMore])
@@ -98,9 +108,14 @@ export default function ChatRoomPage() {
     if (!file) return
     // Reset input so the same file can be selected again
     e.target.value = ''
+    setMediaError(null)
     setUploadingMedia(true)
-    await sendMediaMessage(file, 'image')
+    const ok = await sendMediaMessage(file, 'image')
     setUploadingMedia(false)
+    if (!ok) {
+      setMediaError("Errore nell'invio dell'immagine. Riprova.")
+      setTimeout(() => setMediaError(null), 5000)
+    }
   }
 
   const formatTime = (iso: string) => {
@@ -261,6 +276,11 @@ export default function ChatRoomPage() {
 
       {/* Input bar */}
       <div className="shrink-0 border-t border-white/10 bg-[#1a1a2e] px-3 py-3 pb-safe">
+        {mediaError && (
+          <div className="mb-2 rounded-xl bg-red-500/15 border border-red-500/30 px-3 py-2 text-xs text-red-300">
+            {mediaError}
+          </div>
+        )}
         {/* Emoji picker overlay */}
         {showEmojiPicker && (
           <div

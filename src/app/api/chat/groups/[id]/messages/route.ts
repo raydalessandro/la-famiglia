@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
+import { uploadImage } from '@/lib/storage'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -100,7 +101,11 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 }
 
 // POST /api/chat/groups/:id/messages → 201 ApiResponse<ChatMessage>
-// Body: { text?, message_type?, media_url? }
+// Accepts either JSON `{ text, message_type?, media_url? }` for text/external-url
+// messages, or multipart/form-data with a `file` field for media uploads —
+// in which case the file is uploaded server-side and the resulting URL is
+// stored on the message. Client must NOT upload to Storage directly because
+// the Storage bucket is service_role-gated.
 export async function POST(req: NextRequest, { params }: RouteContext) {
   const member = await requireAuth()
 
@@ -108,27 +113,64 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
   const { id: groupId } = await params
 
-  let body: { text?: string; message_type?: string; media_url?: string }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ data: null, error: 'Body non valido' }, { status: 400 })
-  }
+  const contentType = req.headers.get('content-type') ?? ''
+  const isMultipart = contentType.includes('multipart/form-data')
 
-  const messageType = body.message_type ?? 'text'
-  const mediaUrl = body.media_url ?? null
-  const text = body.text ?? ''
+  let messageType: string
+  let mediaUrl: string | null
+  let text: string
 
-  if (messageType === 'text') {
-    if (!text || text.trim() === '') {
-      return NextResponse.json({ data: null, error: 'Il testo è obbligatorio' }, { status: 400 })
+  if (isMultipart) {
+    let formData: FormData
+    try {
+      formData = await req.formData()
+    } catch {
+      return NextResponse.json({ data: null, error: 'FormData non valido' }, { status: 400 })
     }
-  } else if (messageType === 'image' || messageType === 'document') {
-    if (!mediaUrl) {
-      return NextResponse.json({ data: null, error: 'media_url è obbligatorio' }, { status: 400 })
+
+    const file = formData.get('file')
+    if (!(file instanceof File)) {
+      return NextResponse.json({ data: null, error: 'File mancante' }, { status: 400 })
+    }
+
+    messageType = (formData.get('message_type') as string | null) ?? 'image'
+    text = ((formData.get('text') as string | null) ?? '').trim()
+
+    if (messageType !== 'image' && messageType !== 'document') {
+      return NextResponse.json({ data: null, error: 'Tipo messaggio non valido' }, { status: 400 })
+    }
+
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase()
+    const path = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    try {
+      mediaUrl = await uploadImage('chat', file, path)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Upload fallito'
+      return NextResponse.json({ data: null, error: message }, { status: 400 })
     }
   } else {
-    return NextResponse.json({ data: null, error: 'Tipo messaggio non valido' }, { status: 400 })
+    let body: { text?: string; message_type?: string; media_url?: string }
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ data: null, error: 'Body non valido' }, { status: 400 })
+    }
+
+    messageType = body.message_type ?? 'text'
+    mediaUrl = body.media_url ?? null
+    text = body.text ?? ''
+
+    if (messageType === 'text') {
+      if (!text || text.trim() === '') {
+        return NextResponse.json({ data: null, error: 'Il testo è obbligatorio' }, { status: 400 })
+      }
+    } else if (messageType === 'image' || messageType === 'document') {
+      if (!mediaUrl) {
+        return NextResponse.json({ data: null, error: 'media_url è obbligatorio' }, { status: 400 })
+      }
+    } else {
+      return NextResponse.json({ data: null, error: 'Tipo messaggio non valido' }, { status: 400 })
+    }
   }
 
   const db = createServerClient()

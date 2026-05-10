@@ -1,6 +1,6 @@
 'use client'
 
-import { ActivityWithDetails, CreateActivityInput, UpdateActivityInput, SetWeeklyStatusInput, ApiResponse } from '@/types/database'
+import { ActivityWithDetails, CreateActivityInput, UpdateActivityInput, AttendanceStatus, ApiResponse } from '@/types/database'
 import { useRealtimeSubscription } from '@/lib/realtime'
 import { useState, useEffect, useCallback } from 'react'
 
@@ -11,8 +11,12 @@ type UseActivitiesReturn = {
   createActivity: (input: CreateActivityInput) => Promise<boolean>
   updateActivity: (id: string, input: UpdateActivityInput) => Promise<boolean>
   deleteActivity: (id: string) => Promise<boolean>
-  setWeeklyStatus: (activityId: string, input: SetWeeklyStatusInput) => Promise<boolean>
-  resetWeeklyStatus: (activityId: string) => Promise<boolean>
+  setMyAttendance: (
+    activityId: string,
+    status: AttendanceStatus,
+    modifiedNotes?: string
+  ) => Promise<boolean>
+  clearMyAttendance: (activityId: string) => Promise<boolean>
   refetch: () => Promise<void>
 }
 
@@ -57,7 +61,7 @@ export function useActivities(): UseActivitiesReturn {
   }, [fetchActivities])
 
   useRealtimeSubscription('activities', () => fetchActivities())
-  useRealtimeSubscription('activity_weekly_status', () => fetchActivities())
+  useRealtimeSubscription('activity_weekly_attendances', () => fetchActivities())
 
   const createActivity = async (input: CreateActivityInput): Promise<boolean> => {
     try {
@@ -114,40 +118,49 @@ export function useActivities(): UseActivitiesReturn {
     }
   }
 
-  const setWeeklyStatus = async (activityId: string, input: SetWeeklyStatusInput): Promise<boolean> => {
+  const setMyAttendance = async (
+    activityId: string,
+    status: AttendanceStatus,
+    modifiedNotes?: string
+  ): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/activities/${activityId}/status`, {
+      const res = await fetch(`/api/activities/${activityId}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...input, week_start: getWeekStart() }),
+        body: JSON.stringify({
+          week_start: getWeekStart(),
+          status,
+          modified_notes: modifiedNotes,
+        }),
       })
       const data: ApiResponse<unknown> = await res.json()
       if (!res.ok || data.error) {
-        setError(data.error ?? 'Failed to set weekly status')
+        setError(data.error ?? 'Failed to set attendance')
         return false
       }
+      await fetchActivities()
       return true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to set weekly status')
+      setError(err instanceof Error ? err.message : 'Failed to set attendance')
       return false
     }
   }
 
-  const resetWeeklyStatus = async (activityId: string): Promise<boolean> => {
+  const clearMyAttendance = async (activityId: string): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/activities/${activityId}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'pending', week_start: getWeekStart() }),
-      })
+      const res = await fetch(
+        `/api/activities/${activityId}/attendance?week_start=${getWeekStart()}`,
+        { method: 'DELETE' }
+      )
       const data: ApiResponse<unknown> = await res.json()
       if (!res.ok || data.error) {
-        setError(data.error ?? 'Failed to reset weekly status')
+        setError(data.error ?? 'Failed to clear attendance')
         return false
       }
+      await fetchActivities()
       return true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset weekly status')
+      setError(err instanceof Error ? err.message : 'Failed to clear attendance')
       return false
     }
   }
@@ -159,8 +172,8 @@ export function useActivities(): UseActivitiesReturn {
     createActivity,
     updateActivity,
     deleteActivity,
-    setWeeklyStatus,
-    resetWeeklyStatus,
+    setMyAttendance,
+    clearMyAttendance,
     refetch: fetchActivities,
   }
 }

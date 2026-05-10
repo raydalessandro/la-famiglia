@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { getWeekStart } from '@/lib/dates'
-import { ActivityWithDetails, UpdateActivityInput, MemberPublic } from '@/types/database'
+import { ActivityWithDetails, UpdateActivityInput, MemberPublic, ActivityAttendance } from '@/types/database'
 
 async function fetchActivityWithDetails(
   db: ReturnType<typeof createServerClient>,
@@ -17,7 +17,7 @@ async function fetchActivityWithDetails(
 
   if (activityError || !activity) return null
 
-  const [participantsRes, rolesRes, statusRes] = await Promise.all([
+  const [participantsRes, rolesRes, attendancesRes] = await Promise.all([
     db
       .from('activity_participants')
       .select('member_id, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
@@ -27,11 +27,10 @@ async function fetchActivityWithDetails(
       .select('id, activity_id, member_id, role_label, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
       .eq('activity_id', activityId),
     db
-      .from('activity_weekly_status')
+      .from('activity_weekly_attendances')
       .select('*')
       .eq('activity_id', activityId)
-      .eq('week_start', weekStart)
-      .maybeSingle(),
+      .eq('week_start', weekStart),
   ])
 
   const participants: MemberPublic[] = (participantsRes.data ?? [])
@@ -46,11 +45,14 @@ async function fetchActivityWithDetails(
     member: (row.members as unknown as MemberPublic | null) ?? undefined,
   }))
 
+  const attendances: ActivityAttendance[] = (attendancesRes.data ?? []) as ActivityAttendance[]
+
   return {
     ...activity,
     participants,
     roles,
-    weekly_status: statusRes.data ?? null,
+    attendances,
+    weekly_status: null,
   }
 }
 
