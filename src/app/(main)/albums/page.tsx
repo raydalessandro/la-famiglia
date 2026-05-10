@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAlbums } from '@/hooks/useAlbums'
 import { useAuth } from '@/hooks/useAuth'
-import { BottomSheet } from '@/components/ui'
+import { BottomSheet, Button, Skeleton, EmptyState } from '@/components/ui'
 
 export default function AlbumsPage() {
   const router = useRouter()
@@ -47,30 +47,23 @@ export default function AlbumsPage() {
         {isLoading ? (
           <div className="grid grid-cols-2 gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-44 rounded-2xl bg-white/5 animate-pulse" />
+              <Skeleton key={i} className="h-44 rounded-card" />
             ))}
           </div>
         ) : albums.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <span className="text-5xl">🖼️</span>
-            <div className="text-center">
-              <p className="text-white/60 font-medium">Nessun album ancora</p>
-              <p className="text-white/30 text-sm mt-1">Crea il primo album di famiglia</p>
-            </div>
-            <button
-              onClick={() => setSheetOpen(true)}
-              className="mt-2 rounded-full bg-[#E8A838] px-6 py-2.5 text-sm font-semibold text-[#1a1a2e] active:scale-95 transition-transform"
-            >
-              Crea album
-            </button>
-          </div>
+          <EmptyState
+            icon="🖼️"
+            title="Nessun album ancora"
+            description="Raggruppa le foto di un viaggio, un compleanno o un Natale e condividile con tutti."
+            action={<Button onClick={() => setSheetOpen(true)}>Crea il primo album</Button>}
+          />
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {albums.map((album) => (
               <Link
                 key={album.id}
                 href={`/albums/${album.id}`}
-                className="group relative flex flex-col rounded-2xl bg-white/5 overflow-hidden transition-all active:scale-95 hover:bg-white/10"
+                className="group relative flex flex-col rounded-card bg-surface-raised border border-white/5 overflow-hidden transition-all active:scale-95 hover:bg-surface-high"
               >
                 {/* Cover image */}
                 <div className="h-32 w-full bg-white/5 overflow-hidden">
@@ -104,7 +97,7 @@ export default function AlbumsPage() {
       {albums.length > 0 && (
         <button
           onClick={() => setSheetOpen(true)}
-          className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e] shadow-lg shadow-[#E8A838]/30 active:scale-90 transition-transform"
+          className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e] shadow-lg shadow-[#E8A838]/30 active:scale-95 transition-transform"
           aria-label="Crea album"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -137,20 +130,14 @@ export default function AlbumsPage() {
             {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
           </div>
 
-          <button
+          <Button
             onClick={handleCreate}
-            disabled={creating || !newName.trim()}
-            className="w-full rounded-xl bg-[#E8A838] py-3 text-sm font-bold text-[#1a1a2e] disabled:opacity-40 transition-opacity active:scale-95"
+            disabled={!newName.trim()}
+            loading={creating}
+            fullWidth
           >
-            {creating ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-                Creazione…
-              </span>
-            ) : (
-              'Crea album'
-            )}
-          </button>
+            {creating ? 'Creazione…' : 'Crea album'}
+          </Button>
         </div>
       </BottomSheet>
     </div>

@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useAlbums, useAlbumPhotos } from '@/hooks/useAlbums'
 import { useAuth } from '@/hooks/useAuth'
-import { Header, BottomSheet } from '@/components/ui'
+import { Header, BottomSheet, Button, EmptyState } from '@/components/ui'
 import { compressImage } from '@/lib/storage'
 import { AlbumPhoto } from '@/types/database'
 
@@ -97,19 +97,12 @@ export default function AlbumDetailPage() {
             <div className="h-8 w-8 rounded-full border-2 border-[#E8A838] border-t-transparent animate-spin" />
           </div>
         ) : photos.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <span className="text-5xl">📷</span>
-            <div className="text-center">
-              <p className="text-white/60 font-medium">Nessuna foto ancora</p>
-              <p className="text-white/30 text-sm mt-1">Aggiungi la prima foto all&apos;album</p>
-            </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="mt-2 rounded-full bg-[#E8A838] px-6 py-2.5 text-sm font-semibold text-[#1a1a2e] active:scale-95 transition-transform"
-            >
-              Aggiungi foto
-            </button>
-          </div>
+          <EmptyState
+            icon="📷"
+            title="Album vuoto"
+            description="Aggiungi la prima foto — ognuno della famiglia potrà vederla."
+            action={<Button onClick={() => fileInputRef.current?.click()}>Aggiungi foto</Button>}
+          />
         ) : (
           /* Masonry 2-col grid */
           <div className="flex gap-2">
@@ -145,7 +138,7 @@ export default function AlbumDetailPage() {
       {photos.length > 0 && (
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e] shadow-lg shadow-[#E8A838]/30 active:scale-90 transition-transform"
+          className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e] shadow-lg shadow-[#E8A838]/30 active:scale-95 transition-transform"
           aria-label="Aggiungi foto"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -190,20 +183,14 @@ export default function AlbumDetailPage() {
 
           {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
 
-          <button
+          <Button
             onClick={handleUpload}
-            disabled={uploading || !selectedFile}
-            className="w-full rounded-xl bg-[#E8A838] py-3 text-sm font-bold text-[#1a1a2e] disabled:opacity-40 transition-opacity active:scale-95"
+            disabled={!selectedFile}
+            loading={uploading}
+            fullWidth
           >
-            {uploading ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-                Caricamento…
-              </span>
-            ) : (
-              'Carica foto'
-            )}
-          </button>
+            {uploading ? 'Caricamento…' : 'Carica foto'}
+          </Button>
         </div>
       </BottomSheet>
 

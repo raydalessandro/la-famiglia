@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useChatGroups } from '@/hooks/useChat'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, BottomSheet, ParticipantPicker } from '@/components/ui'
+import { Avatar, BottomSheet, ParticipantPicker, Button, RowSkeleton, EmptyState } from '@/components/ui'
 import { ChatGroupWithDetails, MemberPublic } from '@/types/database'
 import { useRouter } from 'next/navigation'
 
@@ -60,6 +60,7 @@ function GroupRow({
             name={displayName}
             size="md"
             color={displayColor ?? '#E8A838'}
+            ringed
           />
         ) : (
           <div
@@ -167,23 +168,18 @@ export default function ChatPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-2 px-4 pt-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-3.5">
-              <div className="w-12 h-12 rounded-full bg-white/5 animate-pulse shrink-0" />
-              <div className="flex-1">
-                <div className="h-3.5 bg-white/5 rounded-full w-1/3 animate-pulse mb-2" />
-                <div className="h-2.5 bg-white/5 rounded-full w-2/3 animate-pulse" />
-              </div>
-            </div>
+            <RowSkeleton key={i} />
           ))}
         </div>
       ) : groups.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center px-6">
-          <span className="text-5xl mb-4">💬</span>
-          <p className="text-white/60 text-base">Nessuna chat ancora.</p>
-          <p className="text-white/40 text-sm mt-1">Inizia una conversazione con la famiglia!</p>
-        </div>
+        <EmptyState
+          icon="💬"
+          title="Ancora nessuna chat"
+          description="Inizia una conversazione con un familiare o crea un gruppo."
+          action={<Button onClick={() => setSheetOpen(true)}>Nuova chat</Button>}
+        />
       ) : (
         <div>
           {/* Direct chats */}
@@ -297,17 +293,18 @@ export default function ChatPage() {
             </div>
           )}
 
-          <button
+          <Button
             onClick={handleCreate}
-            disabled={isCreating || !canCreate}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+            disabled={!canCreate}
+            loading={isCreating}
+            fullWidth
           >
             {isCreating
               ? 'Creando...'
               : selectedMembers.length === 1
               ? 'Avvia chat diretta'
               : 'Crea gruppo'}
-          </button>
+          </Button>
         </div>
       </BottomSheet>
     </div>

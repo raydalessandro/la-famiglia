@@ -13,15 +13,17 @@ type IconPickerProps = {
 
 export function IconPicker({ value, onChange }: IconPickerProps) {
   return (
-    <div className="grid grid-cols-8 gap-2">
+    // 6 columns at 44px each fits comfortably on a 360px-wide phone with
+    // gaps; older users get a tappable target above the iOS HIG floor.
+    <div className="grid grid-cols-6 gap-2">
       {ICONS.map((icon) => (
         <button
           key={icon}
           type="button"
           onClick={() => onChange(icon)}
-          className={`flex h-9 w-9 items-center justify-center rounded-lg text-xl transition-all ${
+          className={`flex h-touch w-full items-center justify-center rounded-xl text-2xl transition-all ${
             value === icon
-              ? 'ring-2 ring-[#E8A838] bg-[#E8A838]/20 scale-110'
+              ? 'ring-2 ring-accent bg-accent-soft scale-105'
               : 'hover:bg-white/10'
           }`}
           aria-label={icon}

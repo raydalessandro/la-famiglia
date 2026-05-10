@@ -4,8 +4,7 @@ import { useState, useMemo } from 'react'
 import { useTasks } from '@/hooks/useTasks'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { BottomSheet, ParticipantPicker, Avatar } from '@/components/ui'
-import { MiniAvatarStack } from '@/components/ui'
+import { BottomSheet, ParticipantPicker, Avatar, MiniAvatarStack, Button, Skeleton, EmptyState } from '@/components/ui'
 import { CreateTaskInput, TaskWithDetails } from '@/types/database'
 
 type FilterTab = 'all' | 'mine' | 'completed'
@@ -23,33 +22,45 @@ function TaskRow({
   task: TaskWithDetails
   onToggle: (id: string) => void
 }) {
+  // Stripe = identity colour of the first assignee (fallback creator/accent).
+  // Cozi-style colour-per-member at a glance: "ah, è di Marco".
+  const stripeColor =
+    task.assignees[0]?.color || task.creator?.color || '#E8A838'
+
   return (
     <div
-      className={`flex items-start gap-3 bg-[#16213e] rounded-2xl px-4 py-3.5 border border-white/5 transition-opacity ${
+      className={`flex items-start gap-3 bg-surface-raised rounded-card px-4 py-3.5 border border-white/5 transition-opacity ${
         task.is_completed ? 'opacity-50' : ''
       }`}
+      style={{ borderLeft: `3px solid ${stripeColor}` }}
     >
-      {/* Checkbox */}
+      {/* Checkbox — 24px visual, 44px tappable area via negative margin trick.
+       * Apple HIG / Material accessible target floor is 44pt; for older
+       * users we want the tappable surface comfortably above that. */}
       <button
         onClick={() => onToggle(task.id)}
-        className="mt-0.5 shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all"
-        style={{
-          borderColor: task.is_completed ? '#E8A838' : 'rgba(255,255,255,0.2)',
-          backgroundColor: task.is_completed ? '#E8A838' : 'transparent',
-        }}
+        className="shrink-0 -m-2.5 p-2.5 flex items-center justify-center transition-all"
         aria-label={task.is_completed ? 'Segna come da fare' : 'Segna come completato'}
       >
-        {task.is_completed && (
-          <svg className="w-3 h-3 text-[#1a1a2e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        )}
+        <span
+          className="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+          style={{
+            borderColor: task.is_completed ? '#E8A838' : 'rgba(255,255,255,0.2)',
+            backgroundColor: task.is_completed ? '#E8A838' : 'transparent',
+          }}
+        >
+          {task.is_completed && (
+            <svg className="w-4 h-4 text-[#1a1a2e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </span>
       </button>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         <p
-          className={`text-sm font-medium leading-tight ${
+          className={`text-body font-medium ${
             task.is_completed ? 'line-through text-white/30' : 'text-white'
           }`}
         >
@@ -180,24 +191,26 @@ export default function TasksPage() {
       <div className="px-4 py-4 flex flex-col gap-2">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-16 bg-[#16213e] rounded-2xl animate-pulse border border-white/5" />
+            <Skeleton key={i} className="h-16 rounded-card" />
           ))
         ) : filteredTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <span className="text-5xl mb-4">
-              {activeTab === 'completed' ? '🎉' : '✅'}
-            </span>
-            <p className="text-white/60 text-base">
-              {activeTab === 'completed'
-                ? 'Nessun compito completato.'
+          <EmptyState
+            icon={activeTab === 'completed' ? '🎉' : '✅'}
+            title={
+              activeTab === 'completed'
+                ? 'Nessun compito completato'
                 : activeTab === 'mine'
-                ? 'Nessun compito assegnato a te.'
-                : 'Nessun compito da fare!'}
-            </p>
-            {activeTab !== 'completed' && (
-              <p className="text-white/40 text-sm mt-1">Aggiungine uno con il + in basso.</p>
-            )}
-          </div>
+                ? 'Niente da fare per te'
+                : 'Tutto sotto controllo'
+            }
+            description={
+              activeTab === 'completed'
+                ? 'Quando segnerete come fatto un compito apparirà qui.'
+                : activeTab === 'mine'
+                ? 'Nessun compito è assegnato a te al momento.'
+                : 'Aggiungi un compito con il + in basso a destra.'
+            }
+          />
         ) : (
           filteredTasks.map((task) => (
             <TaskRow key={task.id} task={task} onToggle={toggleComplete} />
@@ -280,13 +293,14 @@ export default function TasksPage() {
             </button>
           )}
 
-          <button
+          <Button
             onClick={handleCreate}
-            disabled={isSubmitting || !form.title.trim()}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+            disabled={!form.title.trim()}
+            loading={isSubmitting}
+            fullWidth
           >
             {isSubmitting ? 'Creando...' : 'Crea compito'}
-          </button>
+          </Button>
         </div>
       </BottomSheet>
     </div>

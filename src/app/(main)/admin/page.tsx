@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, BottomSheet, IconPicker } from '@/components/ui'
+import { Avatar, BottomSheet, IconPicker, Button } from '@/components/ui'
 import { MemberPublic } from '@/types/database'
 
 type CreateMemberForm = {
@@ -209,7 +209,7 @@ export default function AdminPage() {
       {/* FAB: create member */}
       <button
         onClick={() => { setCreateSheet(true); setForm(INITIAL_FORM); setCreateError('') }}
-        className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e] shadow-lg shadow-[#E8A838]/30 active:scale-90 transition-transform"
+        className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e] shadow-lg shadow-[#E8A838]/30 active:scale-95 transition-transform"
         aria-label="Aggiungi membro"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -311,20 +311,9 @@ export default function AdminPage() {
 
           {createError && <p className="text-xs text-red-400">{createError}</p>}
 
-          <button
-            onClick={handleCreate}
-            disabled={creating}
-            className="w-full rounded-xl bg-[#E8A838] py-3 text-sm font-bold text-[#1a1a2e] disabled:opacity-40 transition-opacity active:scale-95"
-          >
-            {creating ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-                Creazione…
-              </span>
-            ) : (
-              'Crea membro'
-            )}
-          </button>
+          <Button onClick={handleCreate} loading={creating} fullWidth>
+            {creating ? 'Creazione…' : 'Crea membro'}
+          </Button>
         </div>
       </BottomSheet>
 
@@ -356,20 +345,14 @@ export default function AdminPage() {
           {resetError && <p className="text-xs text-red-400">{resetError}</p>}
           {resetSuccess && <p className="text-xs text-green-400">PIN reimpostato con successo!</p>}
 
-          <button
+          <Button
             onClick={handleResetPin}
-            disabled={resetting || resetSuccess}
-            className="w-full rounded-xl bg-[#E8A838] py-3 text-sm font-bold text-[#1a1a2e] disabled:opacity-40 transition-opacity active:scale-95"
+            disabled={resetSuccess}
+            loading={resetting}
+            fullWidth
           >
-            {resetting ? (
-              <span className="flex items-center justify-center gap-2">
-                <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-                Reset…
-              </span>
-            ) : (
-              'Reimposta PIN'
-            )}
-          </button>
+            {resetting ? 'Reset…' : 'Reimposta PIN'}
+          </Button>
         </div>
       </BottomSheet>
     </div>
@@ -400,6 +383,7 @@ function MemberRow({ member, isMe, inactive, deactivating, onResetPin, onDeactiv
         name={member.name}
         size="sm"
         color={member.color}
+        ringed={!inactive}
       />
 
       <div className="flex-1 min-w-0">

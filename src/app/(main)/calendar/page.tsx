@@ -5,7 +5,7 @@ import { useEvents } from '@/hooks/useEvents'
 import { useActivities } from '@/hooks/useActivities'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { BottomSheet, IconPicker, ColorPicker, ParticipantPicker } from '@/components/ui'
+import { BottomSheet, IconPicker, ColorPicker, ParticipantPicker, Button } from '@/components/ui'
 import { CalendarEventWithDetails, ActivityWithDetails, CreateEventInput } from '@/types/database'
 
 const MONTHS_IT = [
@@ -270,13 +270,13 @@ export default function CalendarPage() {
                     {dayEvents.map((ev) => (
                       <div
                         key={ev.id}
-                        className="flex items-start gap-3 bg-white/5 rounded-xl px-3 py-3 border border-white/5"
+                        className="flex items-start gap-3 bg-surface-raised rounded-card px-3 py-3 border border-white/5"
                         style={{ borderLeft: `3px solid ${ev.color || '#E8A838'}` }}
                       >
-                        <span className="text-lg">{ev.icon || '📅'}</span>
+                        <span className="text-2xl">{ev.icon || '📅'}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium text-sm">{ev.title}</p>
-                          {ev.event_time && <p className="text-white/40 text-xs mt-0.5">{ev.event_time}</p>}
+                          <p className="text-white font-semibold text-body">{ev.title}</p>
+                          {ev.event_time && <p className="text-white/50 text-[13px] mt-0.5">{ev.event_time}</p>}
                           {ev.location && <p className="text-white/40 text-xs">{ev.location}</p>}
                         </div>
                       </div>
@@ -400,13 +400,14 @@ export default function CalendarPage() {
             />
           </div>
 
-          <button
+          <Button
             onClick={handleCreate}
-            disabled={isSubmitting || !form.title.trim()}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+            disabled={!form.title.trim()}
+            loading={isSubmitting}
+            fullWidth
           >
             {isSubmitting ? 'Creando...' : 'Crea evento'}
-          </button>
+          </Button>
         </div>
       </BottomSheet>
     </div>

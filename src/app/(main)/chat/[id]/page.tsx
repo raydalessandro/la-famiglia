@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import { useChat, useChatGroups } from '@/hooks/useChat'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, Header } from '@/components/ui'
+import { Avatar, Header, useToast, EmptyState } from '@/components/ui'
 
 const FAMILY_EMOJIS = ['❤️', '😂', '😍', '🎉', '👏', '🙏', '😊', '🥰', '😘', '👋', '😎', '🤣', '😢', '🤔', '💪', '✨']
 
@@ -23,7 +23,7 @@ export default function ChatRoomPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [uploadingMedia, setUploadingMedia] = useState(false)
-  const [mediaError, setMediaError] = useState<string | null>(null)
+  const toast = useToast()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
@@ -108,13 +108,11 @@ export default function ChatRoomPage() {
     if (!file) return
     // Reset input so the same file can be selected again
     e.target.value = ''
-    setMediaError(null)
     setUploadingMedia(true)
     const ok = await sendMediaMessage(file, 'image')
     setUploadingMedia(false)
     if (!ok) {
-      setMediaError("Errore nell'invio dell'immagine. Riprova.")
-      setTimeout(() => setMediaError(null), 5000)
+      toast.error("Errore nell'invio dell'immagine. Riprova.")
     }
   }
 
@@ -184,10 +182,11 @@ export default function ChatRoomPage() {
             <div className="h-8 w-8 rounded-full border-2 border-[#E8A838] border-t-transparent animate-spin" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <span className="text-4xl">💬</span>
-            <p className="text-white/40 text-sm">Nessun messaggio. Di&apos; qualcosa!</p>
-          </div>
+          <EmptyState
+            icon="💬"
+            title="Nessun messaggio"
+            description="Scrivi il primo messaggio per iniziare la conversazione."
+          />
         ) : (
           grouped.map(({ date, msgs }) => (
             <div key={date}>
@@ -201,19 +200,42 @@ export default function ChatRoomPage() {
               {msgs.map((msg, i) => {
                 const isOwn = msg.author_id === member?.id
                 const prevMsg = i > 0 ? msgs[i - 1] : null
-                const showAvatar = !isOwn && msg.author_id !== prevMsg?.author_id
+                const nextMsg = i < msgs.length - 1 ? msgs[i + 1] : null
+
+                // WhatsApp-style grouping: consecutive messages from the same
+                // author within 5 minutes are one cluster. The first bubble
+                // of an incoming cluster shows author name; the last bubble
+                // of any cluster shows the timestamp. Everything in between
+                // is just bubble bubble bubble.
+                const FIVE_MIN = 5 * 60 * 1000
+                const sameAuthorAsPrev = prevMsg?.author_id === msg.author_id
+                const sameAuthorAsNext = nextMsg?.author_id === msg.author_id
+                const closeToPrev =
+                  prevMsg &&
+                  new Date(msg.created_at).getTime() -
+                    new Date(prevMsg.created_at).getTime() <
+                    FIVE_MIN
+                const closeToNext =
+                  nextMsg &&
+                  new Date(nextMsg.created_at).getTime() -
+                    new Date(msg.created_at).getTime() <
+                    FIVE_MIN
+
+                const isFirstOfGroup = !sameAuthorAsPrev || !closeToPrev
+                const isLastOfGroup = !sameAuthorAsNext || !closeToNext
 
                 return (
                   <div
                     key={msg.id}
-                    className={`flex gap-2 mb-1 ${isOwn ? 'flex-row-reverse' : 'flex-row'} ${
-                      showAvatar || isOwn ? 'mt-3' : 'mt-0.5'
+                    className={`flex gap-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'} ${
+                      isFirstOfGroup ? 'mt-3' : 'mt-0.5'
                     }`}
                   >
-                    {/* Avatar placeholder to maintain alignment */}
+                    {/* Avatar shown on the FIRST bubble of an incoming cluster.
+                     * Placeholder keeps the alignment for following bubbles. */}
                     {!isOwn && (
                       <div className="w-8 shrink-0">
-                        {showAvatar && (
+                        {isFirstOfGroup && (
                           <Avatar
                             emoji={msg.author.avatar_emoji}
                             url={msg.author.avatar_url}
@@ -225,20 +247,30 @@ export default function ChatRoomPage() {
                       </div>
                     )}
 
-                    <div className={`max-w-[75%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
-                      {/* Sender name */}
-                      {showAvatar && !isOwn && (
-                        <span className="text-xs font-semibold text-[#E8A838] mb-1 ml-1">
+                    <div className={`max-w-[78%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
+                      {/* Sender name — only on the first incoming bubble of a
+                       * cluster, coloured by the author's identity colour so
+                       * older readers track who said what at a glance. */}
+                      {isFirstOfGroup && !isOwn && (
+                        <span
+                          className="text-[13px] font-semibold mb-0.5 ml-1"
+                          style={{ color: msg.author.color || '#E8A838' }}
+                        >
                           {msg.author.name}
                         </span>
                       )}
 
-                      {/* Bubble */}
+                      {/* Bubble — radius pinned at the corner closest to the
+                       * speaker (WhatsApp 2024 redesign): outgoing tucks at
+                       * bottom-right, incoming at bottom-left. Only the LAST
+                       * bubble in a cluster gets the corner — intermediate
+                       * bubbles stay fully rounded, which visually welds the
+                       * cluster together. */}
                       <div
-                        className={`rounded-2xl text-sm leading-relaxed break-words overflow-hidden ${
+                        className={`rounded-bubble text-body break-words overflow-hidden ${
                           isOwn
-                            ? 'bg-[#E8A838] text-[#1a1a2e] font-medium rounded-tr-sm'
-                            : 'bg-white/10 text-white rounded-tl-sm'
+                            ? `bg-accent text-surface font-medium ${isLastOfGroup ? 'rounded-br-md' : ''}`
+                            : `bg-surface-raised text-white ${isLastOfGroup ? 'rounded-bl-md' : ''}`
                         }`}
                       >
                         {msg.message_type === 'image' && msg.media_url ? (
@@ -247,7 +279,7 @@ export default function ChatRoomPage() {
                             <img
                               src={msg.media_url}
                               alt="immagine"
-                              className="max-h-48 w-auto object-cover cursor-pointer rounded-xl"
+                              className="max-h-72 w-auto object-cover cursor-pointer rounded-bubble"
                               onClick={() => window.open(msg.media_url ?? '', '_blank')}
                             />
                             {msg.text && (
@@ -259,10 +291,12 @@ export default function ChatRoomPage() {
                         )}
                       </div>
 
-                      {/* Timestamp */}
-                      <span className="text-[10px] text-white/30 mt-0.5 px-1">
-                        {formatTime(msg.created_at)}
-                      </span>
+                      {/* Timestamp only on the last bubble of each cluster. */}
+                      {isLastOfGroup && (
+                        <span className="text-[11px] text-white/40 mt-1 px-1">
+                          {formatTime(msg.created_at)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 )
@@ -276,11 +310,6 @@ export default function ChatRoomPage() {
 
       {/* Input bar */}
       <div className="shrink-0 border-t border-white/10 bg-[#1a1a2e] px-3 py-3 pb-safe">
-        {mediaError && (
-          <div className="mb-2 rounded-xl bg-red-500/15 border border-red-500/30 px-3 py-2 text-xs text-red-300">
-            {mediaError}
-          </div>
-        )}
         {/* Emoji picker overlay */}
         {showEmojiPicker && (
           <div
@@ -340,7 +369,7 @@ export default function ChatRoomPage() {
             onKeyDown={handleKeyDown}
             placeholder="Scrivi un messaggio…"
             rows={1}
-            className="flex-1 resize-none rounded-2xl bg-white/10 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:ring-1 focus:ring-[#E8A838] max-h-32 leading-relaxed"
+            className="flex-1 resize-none rounded-2xl bg-white/10 px-4 py-2.5 text-body text-white placeholder-white/30 outline-none focus:ring-1 focus:ring-[#E8A838] max-h-32"
             style={{ height: 'auto' }}
             onInput={(e) => {
               const el = e.currentTarget

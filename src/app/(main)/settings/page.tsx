@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar } from '@/components/ui'
+import { Avatar, Button, useToast } from '@/components/ui'
 
 const EMOJI_OPTIONS = [
   '😊','😎','🥳','🤩','😴','🧑','👩','👨','🧒','👧','👦',
@@ -31,9 +31,8 @@ export default function SettingsPage() {
   const [telegramChatId, setTelegramChatId] = useState('')
 
   const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState('')
-  const [saveSuccess, setSaveSuccess] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const toast = useToast()
 
   // Fetch full member data (including notification prefs) on mount
   useEffect(() => {
@@ -73,8 +72,6 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setPinError('')
-    setSaveError('')
-    setSaveSuccess(false)
 
     if (!validatePin()) return
 
@@ -101,19 +98,18 @@ export default function SettingsPage() {
       })
 
       if (res.ok) {
-        setSaveSuccess(true)
         setCurrentPin('')
         setNewPin('')
         setConfirmPin('')
         await refreshAuth()
         await refetch()
-        setTimeout(() => setSaveSuccess(false), 3000)
+        toast.success('Impostazioni salvate')
       } else {
         const result = await res.json()
-        setSaveError(result.error ?? 'Errore nel salvataggio. Riprova.')
+        toast.error(result.error ?? 'Errore nel salvataggio. Riprova.')
       }
     } catch {
-      setSaveError('Errore di rete. Riprova.')
+      toast.error('Errore di rete. Riprova.')
     } finally {
       setSaving(false)
     }
@@ -318,49 +314,20 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Feedback messages */}
-        {saveError && (
-          <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3">
-            <p className="text-sm text-red-400">{saveError}</p>
-          </div>
-        )}
-        {saveSuccess && (
-          <div className="rounded-xl bg-green-500/10 border border-green-500/20 px-4 py-3">
-            <p className="text-sm text-green-400">Impostazioni salvate con successo!</p>
-          </div>
-        )}
-
-        {/* Save button */}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full rounded-2xl bg-[#E8A838] py-3.5 text-base font-bold text-[#1a1a2e] disabled:opacity-50 transition-opacity active:scale-95"
-        >
-          {saving ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="h-4 w-4 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
-              Salvataggio…
-            </span>
-          ) : (
-            'Salva modifiche'
-          )}
-        </button>
+        {/* Save */}
+        <Button onClick={handleSave} loading={saving} fullWidth>
+          {saving ? 'Salvataggio…' : 'Salva modifiche'}
+        </Button>
 
         {/* Logout */}
-        <button
+        <Button
           onClick={handleLogout}
-          disabled={loggingOut}
-          className="w-full rounded-2xl border border-red-500/30 py-3.5 text-base font-semibold text-red-400 hover:bg-red-500/10 disabled:opacity-50 transition-colors active:scale-95"
+          loading={loggingOut}
+          variant="destructive"
+          fullWidth
         >
-          {loggingOut ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="h-4 w-4 rounded-full border-2 border-red-400 border-t-transparent animate-spin" />
-              Uscita…
-            </span>
-          ) : (
-            'Esci dall\'account'
-          )}
-        </button>
+          {loggingOut ? 'Uscita…' : "Esci dall'account"}
+        </Button>
       </div>
     </div>
   )

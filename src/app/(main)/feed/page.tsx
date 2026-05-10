@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
-import { Avatar, BottomSheet } from '@/components/ui'
+import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState } from '@/components/ui'
 import { compressImage } from '@/lib/storage'
 import { PostWithDetails } from '@/types/database'
 
@@ -46,7 +46,10 @@ function PostCard({
   const typeLabel = POST_TYPE_LABELS[post.post_type]
 
   return (
-    <article className="bg-[#16213e] rounded-2xl overflow-hidden border border-white/5">
+    <article
+      className="bg-surface-raised rounded-card overflow-hidden border border-white/5"
+      style={{ borderLeft: `3px solid ${post.author.color || '#E8A838'}` }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <div className="flex items-center gap-3 min-w-0">
@@ -56,9 +59,10 @@ function PostCard({
             name={post.author.name}
             size="sm"
             color={post.author.color}
+            ringed
           />
           <div className="min-w-0">
-            <p className="font-semibold text-white text-sm leading-tight">{post.author.name}</p>
+            <p className="font-semibold text-white text-[15px] leading-tight">{post.author.name}</p>
             <p className="text-white/40 text-xs">{formatRelativeTime(post.created_at)}</p>
           </div>
         </div>
@@ -84,7 +88,7 @@ function PostCard({
 
       {/* Text */}
       {post.text && (
-        <p className="px-4 pb-3 text-white/90 text-sm leading-relaxed whitespace-pre-wrap">{post.text}</p>
+        <p className="px-4 pb-3 text-white/90 text-body whitespace-pre-wrap">{post.text}</p>
       )}
 
       {/* Images */}
@@ -259,15 +263,18 @@ export default function FeedPage() {
       {/* Posts */}
       <div className="px-4 py-4 flex flex-col gap-4">
         {isLoading && posts.length === 0 ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="bg-[#16213e] rounded-2xl h-48 animate-pulse border border-white/5" />
-          ))
+          Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)
         ) : posts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <span className="text-5xl mb-4">📝</span>
-            <p className="text-white/60 text-base">Nessun post ancora.</p>
-            <p className="text-white/40 text-sm mt-1">Sii il primo a condividere qualcosa!</p>
-          </div>
+          <EmptyState
+            icon="📝"
+            title="La bacheca è vuota"
+            description="Condividi una foto, una storia o una ricetta — sarà visibile solo alla famiglia."
+            action={
+              <Button onClick={() => setSheetOpen(true)}>
+                Scrivi il primo post
+              </Button>
+            }
+          />
         ) : (
           posts.map((post) => (
             <PostCard
@@ -336,7 +343,7 @@ export default function FeedPage() {
             onChange={(e) => setFormText(e.target.value)}
             placeholder="Scrivi qualcosa..."
             rows={4}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm resize-none focus:outline-none focus:border-[#E8A838]/60"
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-body resize-none focus:outline-none focus:border-[#E8A838]/60"
           />
 
           {/* Image previews */}
@@ -376,13 +383,14 @@ export default function FeedPage() {
           </button>
 
           {/* Submit */}
-          <button
+          <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || (!formText.trim() && !formImages?.length)}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+            disabled={!formText.trim() && !formImages?.length}
+            loading={isSubmitting}
+            fullWidth
           >
             {isSubmitting ? 'Pubblicando...' : 'Pubblica'}
-          </button>
+          </Button>
         </div>
       </BottomSheet>
     </div>
