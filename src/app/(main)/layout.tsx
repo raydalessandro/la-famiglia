@@ -1,7 +1,7 @@
 'use client'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useNotifications } from '@/hooks/useNotifications'
-import { BottomNav, Header, Badge } from '@/components/ui'
+import { BottomNav, Header, Badge, ToastProvider } from '@/components/ui'
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 import Link from 'next/link'
@@ -84,7 +84,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <AuthGuard>{children}</AuthGuard>
+      <ToastProvider>
+        <AuthGuard>{children}</AuthGuard>
+      </ToastProvider>
     </AuthProvider>
   )
 }
