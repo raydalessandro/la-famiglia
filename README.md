@@ -50,8 +50,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-Per il push offline/notification servono anche le VAPID keys (vedi
-`src/lib/web-push.ts` per i nomi).
+Per le notifiche push (PWA, iOS PWA-only ≥16.4) servono anche le 3
+VAPID env: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_EMAIL`.
+Generale con `npx web-push generate-vapid-keys`. Il pattern di
+notifica vive in `src/lib/notification-events.ts` (catalog) +
+`src/lib/notifications.ts` (primitive web-push + Telegram).
 
 ## Comandi
 

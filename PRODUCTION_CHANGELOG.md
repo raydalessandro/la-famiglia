@@ -8,6 +8,43 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-11 — Conferma attività aperta a tutti i membri
+
+**Why**: il design originale ammetteva la conferma presenza solo per i
+`participant_ids` pre-selezionati alla creazione dell'attività. In
+famiglia funzionava solo per chi aveva creato l'attività (papà admin).
+Decisione di prodotto: tutti i membri loggati possono confermare
+qualsiasi attività.
+
+**What to apply on production**
+
+Nessuna migration SQL. Nessuna env var. Il deploy normale di Vercel
+basta. `activity_participants` resta come metadata (chi riceve la
+push), non più come gate d'accesso (vedi commit `c9d7694`).
+
+**Side effect su dati esistenti**: le attività create finora con un
+sottoinsieme di `participant_ids` continueranno a notificare solo quel
+sottoinsieme. Se vuoi che tutti i membri ricevano la push di un'attività,
+modifica l'attività e aggiungi tutti come participants. Nessun
+backfill automatico — è una scelta esplicita per non spammare attività
+private (es. "Karate Luca") inavvertitamente.
+
+---
+
+## 2026-05-11 — Catalog notifiche `lib/notification-events.ts`
+
+**Why**: tutte le notifiche dell'app ora passano da un registry centrale
+tipato. Riduce il rischio di "feature dimenticata" (è successo con la
+chat) e standardizza title/body/link.
+
+**What to apply on production**
+
+Nessuna migration. Aggiunto solo `'new_activity'` all'enum
+`Notification['type']` TS — la colonna DB è già `TEXT` senza CHECK.
+Pattern documentato in HANDOFF.md sezione "Notifiche push".
+
+---
+
 ## 2026-05-11 — Web Push notifications (PWA only)
 
 **Why**: il backend per le notifiche push esisteva da tempo (libreria

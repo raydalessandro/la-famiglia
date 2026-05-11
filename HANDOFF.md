@@ -72,6 +72,19 @@ Samsung Internet e desktop. Testata sui device della famiglia.
   - 5.B Pagina post singolo `/feed/[id]` con commenti + composer
   - 5.C `<ImageLightbox>` — swipe + ESC + frecce desktop
   - 5.D Profilo arricchito con stat + griglia 3 colonne tap-through
+- **Fase 7** — notifiche push end-to-end:
+  - Web Push client cablato (toggle Settings + subscription + VAPID).
+    Funziona su Android (browser + PWA) e iPhone (solo PWA installata,
+    iOS 16.4+).
+  - Catalog centrale `src/lib/notification-events.ts` con `emit(key, payload)`.
+    Eventi cablati oggi: `chat_message`, `new_post`, `new_activity`.
+    Comments/reactions/tasks/events/attendance usano ancora il vecchio
+    `notifyMembers` diretto — migrabili al catalog quando si tocca quella
+    route per altro. Vedi convenzione **Notifiche** sotto.
+  - Decisione di prodotto: tutti i membri di famiglia possono confermare
+    la presenza a qualsiasi attività, non solo i `participant_ids`
+    pre-selezionati alla creazione. `activity_participants` resta come
+    metadata informativo (chi riceve la push), non come gate d'accesso.
 
 **Cosa NON è ancora stato fatto e dove sta**: vedi sezione **Fase 6**
 sotto.
@@ -203,6 +216,36 @@ Provider già montato in `src/app/layout.tsx`.
 
 Stessa shape `PostWithDetails` ovunque, costruita da `buildPostWithDetails`
 in `src/lib/posts.ts`. Aggiungi campi nuovi al post lì.
+
+### Notifiche push (pattern catalog)
+
+Tutte le notifiche passano da un registry centrale tipato in
+`src/lib/notification-events.ts`. Quando una nuova feature deve produrre
+una push:
+
+1. Se il tipo è nuovo, aggiungilo all'enum `Notification['type']` in
+   `src/types/database.ts` (la colonna DB è TEXT senza CHECK, niente
+   migration).
+2. Estendi `PayloadByEvent` con la shape del payload tipata.
+3. Aggiungi una entry in `NOTIFICATION_EVENTS` con
+   `title / body / link / recipients`. Convenzione: il sender va
+   sempre escluso dentro `recipients`.
+4. Nel route handler chiama:
+   ```ts
+   emit('nome_evento', payload).catch(err => console.error('emit failed:', err))
+   ```
+   Fire-and-forget — la risposta HTTP non aspetta web-push.
+5. Aggiungi un blocco `describe` in `specs/tests/notification_events.test.ts`.
+
+Il gate `notify_push` per-utente vive dentro `sendPushNotification`
+(`src/lib/notifications.ts`). Le definitions del catalog NON devono
+filtrarci sopra — restituiscono tutti i potenziali destinatari e il
+sistema più in basso scarta chi ha disattivato le push.
+
+Caveat iOS: le push funzionano solo se l'utente ha aggiunto l'app alla
+Home schermata (PWA installata, iOS 16.4+). Ogni reinstall invalida la
+subscription. Lato server è automatico: `sendPushNotification` pulisce
+le subscription scadute (410 / 404) dal DB al primo errore.
 
 ## Attività vs Calendario — due moduli indipendenti
 
