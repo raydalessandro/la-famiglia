@@ -97,6 +97,13 @@ vi.mock('@/lib/supabase/client', () => ({
   createServerClient: vi.fn(),
 }))
 
+// notifyMembers viene chiamato fire-and-forget dopo l'INSERT del messaggio.
+// Lo mocchiamo per ispezionare gli argomenti senza chiamare web-push reale.
+const mockNotifyMembers = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/lib/notifications', () => ({
+  notifyMembers: mockNotifyMembers,
+}))
+
 // ---------------------------------------------------------------------------
 // Late imports
 // ---------------------------------------------------------------------------
@@ -118,6 +125,10 @@ const mockCreateServerClient = vi.mocked(createServerClient)
 type TableConfig = {
   // chat_group_members: lookup of (group_id, member_id) → membership row | null
   membership?: { data: unknown; error: unknown }
+  // chat_group_members: lista completa dei membri del gruppo (per notifiche
+  // post-insert). Distinta da `membership` perché viene awaited senza
+  // .maybeSingle() — è un select diretto su tutto.
+  groupMemberList?: { data: { member_id: string }[] | null; error: unknown }
   // chat_messages: SELECT (paginated)
   messagesSelect?: { data: unknown[] | null; error: unknown; count?: number | null }
   // chat_messages: INSERT
@@ -129,7 +140,10 @@ type TableConfig = {
 function makeDb(cfg: TableConfig = {}) {
   const fromMock = vi.fn((table: string) => {
     if (table === 'chat_group_members') {
-      // Used as: db.from('chat_group_members').select('*').eq('group_id', x).eq('member_id', y).maybeSingle()
+      // Due use case:
+      //   1. Membership check: .select('id').eq('group_id', x).eq('member_id', y).maybeSingle()
+      //   2. Recipient lookup per notifyMembers: .select('member_id').eq('group_id', x)
+      //      → awaited direttamente sull'oggetto builder (è thenable).
       const builder: Record<string, unknown> = {}
       builder.select = vi.fn(() => builder)
       builder.eq = vi.fn(() => builder)
@@ -139,6 +153,8 @@ function makeDb(cfg: TableConfig = {}) {
       builder.single = vi.fn(() => Promise.resolve(
         cfg.membership ?? { data: null, error: null }
       ))
+      ;(builder as { then?: unknown }).then = (resolve: (v: unknown) => unknown) =>
+        Promise.resolve(cfg.groupMemberList ?? { data: [], error: null }).then(resolve)
       return builder
     }
 
@@ -444,5 +460,152 @@ describe('GET /api/chat/groups/:id/messages — pagination shape', () => {
     expect(body.per_page).toBe(2)
     expect(body.total).toBe(3)
     expect(body.has_more).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Bug 3: chat non notifica gli altri membri del gruppo
+//
+// Storia: 11/05/2026 — il toggle "Notifiche push" funzionava, la push di
+// prova arrivava sia su Android sia iPhone, ma mandando un messaggio in
+// chat l'altro membro non riceveva nulla. Root cause: la route POST chat
+// messages non chiamava `notifyMembers` (lo facevano già i POST di
+// posts/comments/reactions/events/tasks/attendance, ma la chat era
+// rimasta fuori dal cablaggio iniziale).
+// ---------------------------------------------------------------------------
+
+describe('POST chat messages — notifica gli altri membri del gruppo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockNotifyMembers.mockResolvedValue(undefined)
+  })
+
+  it('chiama notifyMembers con i recipienti escluso il sender', async () => {
+    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
+    mockCreateServerClient.mockReturnValue(makeDb({
+      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
+      messagesInsert: { data: MOCK_MESSAGE, error: null },
+      messagesEnrich: { data: MOCK_MESSAGE, error: null },
+      groupMemberList: {
+        data: [
+          { member_id: 'member-1' }, // il sender — DEVE essere escluso
+          { member_id: 'member-2' },
+          { member_id: 'member-3' },
+        ],
+        error: null,
+      },
+    }))
+
+    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
+      text: 'Ciao a tutti',
+    })
+    const res = await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
+    expect(res.status).toBe(201)
+
+    expect(mockNotifyMembers).toHaveBeenCalledTimes(1)
+    const [recipients, type, title, body, link] = mockNotifyMembers.mock.calls[0]
+    expect(recipients).toEqual(['member-2', 'member-3']) // member-1 ESCLUSO
+    expect(type).toBe('chat_message')
+    expect(title).toBe('Mario') // nome del sender
+    expect(body).toBe('Ciao a tutti')
+    expect(link).toBe('/chat/group-1')
+  })
+
+  it('non chiama notifyMembers se il sender è l\'unico membro del gruppo', async () => {
+    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
+    mockCreateServerClient.mockReturnValue(makeDb({
+      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
+      messagesInsert: { data: MOCK_MESSAGE, error: null },
+      messagesEnrich: { data: MOCK_MESSAGE, error: null },
+      groupMemberList: {
+        data: [{ member_id: 'member-1' }], // solo il sender
+        error: null,
+      },
+    }))
+
+    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
+      text: 'Eco',
+    })
+    const res = await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
+    expect(res.status).toBe(201)
+
+    expect(mockNotifyMembers).not.toHaveBeenCalled()
+  })
+
+  it('tronca testi lunghi a 80 caratteri con ellipsis', async () => {
+    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
+    mockCreateServerClient.mockReturnValue(makeDb({
+      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
+      messagesInsert: { data: MOCK_MESSAGE, error: null },
+      messagesEnrich: { data: MOCK_MESSAGE, error: null },
+      groupMemberList: { data: [{ member_id: 'member-2' }], error: null },
+    }))
+
+    const longText = 'x'.repeat(200)
+    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
+      text: longText,
+    })
+    await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
+
+    const [, , , body] = mockNotifyMembers.mock.calls[0]
+    expect(body).toHaveLength(81) // 80 + ellipsis char
+    expect(body.endsWith('…')).toBe(true)
+  })
+
+  it('usa "📷 Foto" come snippet per messaggi image', async () => {
+    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
+    mockCreateServerClient.mockReturnValue(makeDb({
+      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
+      messagesInsert: { data: MOCK_MESSAGE, error: null },
+      messagesEnrich: { data: MOCK_MESSAGE, error: null },
+      groupMemberList: { data: [{ member_id: 'member-2' }], error: null },
+    }))
+
+    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
+      message_type: 'image',
+      media_url: 'https://x/img.jpg',
+    })
+    await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
+
+    const [, , , body] = mockNotifyMembers.mock.calls[0]
+    expect(body).toBe('📷 Foto')
+  })
+
+  it('usa "📎 File" come snippet per messaggi document', async () => {
+    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
+    mockCreateServerClient.mockReturnValue(makeDb({
+      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
+      messagesInsert: { data: MOCK_MESSAGE, error: null },
+      messagesEnrich: { data: MOCK_MESSAGE, error: null },
+      groupMemberList: { data: [{ member_id: 'member-2' }], error: null },
+    }))
+
+    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
+      message_type: 'document',
+      media_url: 'https://x/doc.pdf',
+    })
+    await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
+
+    const [, , , body] = mockNotifyMembers.mock.calls[0]
+    expect(body).toBe('📎 File')
+  })
+
+  it('non blocca la risposta 201 se notifyMembers fallisce (fire-and-forget)', async () => {
+    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
+    mockCreateServerClient.mockReturnValue(makeDb({
+      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
+      messagesInsert: { data: MOCK_MESSAGE, error: null },
+      messagesEnrich: { data: MOCK_MESSAGE, error: null },
+      groupMemberList: { data: [{ member_id: 'member-2' }], error: null },
+    }))
+    mockNotifyMembers.mockRejectedValueOnce(new Error('VAPID giù'))
+
+    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
+      text: 'Test',
+    })
+    const res = await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
+    // L'utente vede il messaggio inviato anche se la push non parte:
+    // il push è un nice-to-have, non un blocco del flow.
+    expect(res.status).toBe(201)
   })
 })

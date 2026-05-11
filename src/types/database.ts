@@ -273,6 +273,7 @@ export type Notification = {
     | 'new_post'
     | 'new_comment'
     | 'new_reaction'
+    | 'chat_message'
   title: string
   body: string
   link: string | null
