@@ -27,7 +27,7 @@ claude/fix-hydration-issues-Cp0Eu
 
 - App testata su **Chrome, Safari, Samsung Internet**: funziona.
 - Tutte le pagine fanno il giusto su mobile (375-414px viewport).
-- **Bug noto**: la pagina **Attività** è vuota anche se in `calendar` ci sono eventi di tipo activity. Vedi sezione "Bug pagina Attività" più sotto.
+- Bug raccolti in produzione e chiusi nei commit `d8e9db2` / `59e37a4` / `04a9bf4` (nome chat diretta, ordine messaggi, partecipanti attività di default).
 
 ## Convenzioni — leggi PRIMA di scrivere codice
 
@@ -124,21 +124,19 @@ toast.success('Salvato.')
 
 Tutti i provider sono in `src/app/layout.tsx` o `(main)/layout.tsx` — già montati.
 
-## Bug pagina Attività (da risolvere insieme all'utente)
+## Attività vs Calendario — due moduli indipendenti
 
-**Sintomo**: `/activities` mostra empty state anche se sul calendario ci sono eventi.
+**Decisione presa dall'utente (2026-05-11).** `Attività` e `Agenda`
+sono due feature separate che leggono e scrivono su tabelle distinte:
 
-**Probabile causa** (da verificare con Supabase aperto):
-1. Migration `006_activity_attendances.sql` non applicata in produzione → la query JOIN su `activity_attendances` fallisce silente.
-2. Schema `calendar_events` ha campo `type` o simile che distingue activity da event one-shot, e la query di `/activities` filtra male.
-3. RLS policy che taglia fuori l'utente loggato.
+- **Attività** (`/activities`) → tabella `activities` + `activity_participants` + `activity_weekly_attendances`. Sono attività **ricorrenti** settimanali (es. "Piscina ogni sabato"). Ogni settimana ogni membro può confermare / saltare / modificare la propria presenza.
+- **Agenda** (`/calendar`) → tabella `events`. Sono eventi **one-shot** con data specifica.
 
-**L'utente ha esplicitamente detto di NON toccare attività ora** — dice che "la faremo modulare a parte, è più complessa". Quando ci sederete insieme:
-- Prima diagnostica SQL (verificare migration, schema, RLS).
-- Poi refactor UI completo (Button, EmptyState, body 17px, stripe colorata membro, card unificata).
-- Probabile redesign: distinzione visuale tra "activity ricorrente" (badge ricorrenza) e "evento" (data singola).
+**Niente sincronizzazione bidirezionale tra le due.** Creare un evento in Agenda non crea un'attività ricorrente, e viceversa. Se servisse una vista unificata in futuro, va costruita lato lettura sopra entrambe le tabelle — non duplicando le righe.
 
-**Per ora non fare niente sulla pagina attività finché l'utente non te lo chiede esplicitamente.**
+**Race conditions**: rare per natura (famiglia di 4-6 persone, scritture sporadiche). Gestione: lo stesso pattern del resto del progetto — optimistic update + refetch su errore. Niente lock distribuiti, niente transazioni cross-tabella.
+
+**Default participants**: dal commit `04a9bf4`, un'attività senza riga in `activity_participants` viene mostrata con TUTTI i membri attivi come partecipanti. Per restringere il roster a un sottogruppo (es. solo i nonni vanno in piscina), popolare esplicitamente `activity_participants`.
 
 ## Cosa è stato fatto (commits sul branch)
 
@@ -153,6 +151,10 @@ Tutti i provider sono in `src/app/layout.tsx` o `(main)/layout.tsx` — già mon
 | `df81f50` | Fase 1 — RLS difensive (008) + recovery file 007 + integration test suite |
 | `f86fc15` | Fase 2 (F3.2) — Post reactions: API + tipi + componente + integrazione feed |
 | `299e42e` | tsc clean (target ES2017, fix test-time type errors preesistenti) |
+| `be9d75c` | Fase 3 — handoff + changelog aggiornati per RLS + reactions |
+| `d8e9db2` | Fix chat: flatten members per mostrare nome del contatto |
+| `59e37a4` | Fix chat: ordine messaggi ASC (vecchi in alto, nuovi in basso) |
+| `04a9bf4` | Fix attività: tutti i membri attivi partecipano di default |
 
 ## Cosa resta da fare
 
@@ -244,15 +246,38 @@ di coverage e per evitare regressioni future):
 
 Non è urgenza di sicurezza, solo copertura.
 
-### Attività page (priorità: dopo che l'utente apre Supabase con te)
+### Attività page — refactor visuale (priorità: bassa)
 
-Vedi "Bug pagina Attività" sopra. Tutto da progettare insieme.
+I bug funzionali (`Piscina` senza azioni / chi conferma) sono chiusi
+in `04a9bf4`. Resta il refactor visuale: la card attualmente non usa
+ancora gli stessi token / pattern del resto dell'app.
+
+Quando ci si lavora:
+- `<Button>` invece dei bottoni Confermo/Salto/Modifico inline
+- body 17px per il titolo attività
+- stripe colorata coerente con i token (già c'è una stripe ma è custom)
+- `<EmptyState>` per il caso "Nessuna attività"
+
+Non toccare la logica delle attendances / partecipanti — funziona.
 
 ### Altre cose minori che potresti notare
 
-- Activity card in `/activities` non è stata refactorizzata (su decisione utente — non toccare finché non si lavora sulla pagina intera).
 - Settings/admin sections sono ancora `bg-white/5 rounded-2xl` (volutamente — non sono card).
-- I form di create (post, task, album, event) non sono stati toccati: copy, label, validation messages potrebbero meritare un giro quando si arriva a F4.
+- I form di create (post, task, album, event) non sono stati toccati: copy, label, validation messages potrebbero meritare un giro.
+
+### Punti in pancia da verificare quando si riapre il progetto
+
+L'utente ha esplicitamente messo in stand-by 9 piccoli punti durante
+Fase 1 e Fase 2 — da verificare insieme, non bloccanti:
+1. `post_likes` vs `post_reactions` — chiarire se `post_likes` è legacy
+2. `app_config` in default-deny — `grep -rn "app_config" src/` per vedere se qualcuno legge lato client
+3. Test cleanup come `it()` finale in `rls_defensive.test.ts` → spostare in `afterAll()`
+4. Confermare modello "anon legge tutte le reazioni" è coerente con privacy desiderata
+5. Tre fonti di verità per realtime tables (`002`, `006`, `007`, `008`) — eventuale view di sync
+6. `usePosts` fa `fetchPosts()` completo a ogni reaction toggle → ottimizzare quando il feed cresce
+7. `postId: _postId` unused in `<ReactionBar>` → toglierlo o documentare il "reserved for"
+8. `member as MemberPublic` cast in `feed/page.tsx:296` → tipare meglio `useAuth()`
+9. E2E reactions completo (login + click + persist) — richiede member di test seedato
 
 ## Workflow
 
