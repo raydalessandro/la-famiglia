@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
-import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState } from '@/components/ui'
+import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { compressImage } from '@/lib/storage'
 import { ReactionEmoji, MemberPublic } from '@/types/database'
@@ -12,6 +12,7 @@ import { ReactionEmoji, MemberPublic } from '@/types/database'
 
 export default function FeedPage() {
   const router = useRouter()
+  const toast = useToast()
   const { member } = useAuth()
   const { posts, isLoading, hasMore, loadMore, createPost, toggleLike, toggleReaction, deletePost } = usePosts()
 
@@ -45,16 +46,34 @@ export default function FeedPage() {
   const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
+    // Reset early so the same picker can be reopened even if a file fails.
+    e.target.value = ''
     const compressed: File[] = []
     const previews: string[] = []
+    const failed: string[] = []
     for (const file of files) {
-      const comp = await compressImage(file)
-      compressed.push(comp)
-      previews.push(URL.createObjectURL(comp))
+      try {
+        const comp = await compressImage(file)
+        compressed.push(comp)
+        previews.push(URL.createObjectURL(comp))
+      } catch (err) {
+        // Per debug: l'errore arriva con prefisso [compressImage]. Su iPhone
+        // si vede con Eruda. Mai silenziare un fallimento utente.
+        console.error(err)
+        failed.push(file.name)
+      }
     }
-    setFormImages((prev) => [...(prev ?? []), ...compressed])
-    setFormPreviews((prev) => [...prev, ...previews])
-    e.target.value = ''
+    if (compressed.length > 0) {
+      setFormImages((prev) => [...(prev ?? []), ...compressed])
+      setFormPreviews((prev) => [...prev, ...previews])
+    }
+    if (failed.length > 0) {
+      toast.error(
+        failed.length === files.length
+          ? 'Non riesco a leggere questa foto. Prova con un\'altra.'
+          : `${failed.length} foto su ${files.length} non sono state caricate.`,
+      )
+    }
   }
 
   const handleRemoveImage = (idx: number) => {
@@ -205,7 +224,11 @@ export default function FeedPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            // Esplicitiamo i MIME invece di image/* per forzare iOS Safari a
+            // convertire HEIC del rullino iPhone in JPEG alla selezione.
+            // image/* lascia passare HEIC, che il canvas Safari non sa
+            // decodificare → compressImage falliva e l'upload si bloccava.
+            accept="image/jpeg,image/png,image/webp"
             multiple
             className="hidden"
             onChange={handleImagePick}

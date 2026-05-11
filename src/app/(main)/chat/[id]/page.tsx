@@ -354,7 +354,10 @@ export default function ChatRoomPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            // Esplicitiamo i MIME invece di image/* per forzare iOS a
+            // convertire HEIC in JPEG. Vedi commento corrispondente in
+            // src/app/(main)/feed/page.tsx.
+            accept="image/jpeg,image/png,image/webp"
             className="hidden"
             onChange={handleFileChange}
           />
