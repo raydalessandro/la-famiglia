@@ -324,6 +324,39 @@ export default function SettingsPage() {
             </button>
           </div>
 
+          {/* Test push — visibile solo quando l'utente ha attivato le push.
+           * Invia una notifica a sé stesso così l'utente può verificare il
+           * pipe end-to-end senza dover chiedere a un altro membro di fare
+           * un like / commento. Anche utile dopo un cambio device. */}
+          {notifyPush && (
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/push/test', { method: 'POST' })
+                  const json = await res.json().catch(() => null) as { data: { sent: boolean } | null; error: string | null } | null
+                  if (!res.ok) {
+                    toast.error(json?.error ?? `Errore ${res.status}`)
+                    return
+                  }
+                  if (json?.data?.sent) {
+                    toast.success('Notifica inviata. Controlla il dispositivo.')
+                  } else {
+                    // sent=false: il backend non ha trovato subscription per
+                    // questo member, oppure notify_push è false nonostante
+                    // il toggle. Probabile desync DB/browser.
+                    toast.error('Nessuna subscription registrata. Disattiva e riattiva il toggle.')
+                  }
+                } catch {
+                  toast.error('Errore di rete. Riprova.')
+                }
+              }}
+              className="text-left text-xs text-[#E8A838] underline underline-offset-2 active:opacity-60"
+            >
+              Invia notifica di prova
+            </button>
+          )}
+
           {/* Telegram */}
           <div className="flex items-center justify-between">
             <div>
