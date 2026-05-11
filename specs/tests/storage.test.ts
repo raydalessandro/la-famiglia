@@ -486,4 +486,123 @@ describe('compressImage', () => {
 
     expect(capturedWidth).toBeLessThanOrEqual(640)
   })
+
+  // -------------------------------------------------------------------------
+  // Regressions for the iOS Safari HEIC bug (8123826).
+  //
+  // Background: iPhone shoots HEIC by default. Safari iOS used to silently
+  // return `null` from canvas.toBlob('image/webp', …) on some inputs, which
+  // broke compressImage and bubbled up as "errore caricamento" in feed and
+  // chat. The fix: try WebP, fall back to JPEG on null; throw with a
+  // [compressImage] tag if both encoders give up. These tests prove the
+  // fallback ladder works so the bug can't return silently.
+  // -------------------------------------------------------------------------
+
+  it('falls back to JPEG when WebP encoding returns null', async () => {
+    // Safari-quirk simulation: toBlob is called once with 'image/webp' and
+    // returns null, then called again with 'image/jpeg' and returns a real
+    // blob. The returned File must reflect the format actually produced —
+    // .jpg + image/jpeg — otherwise the server validator (ALLOWED_TYPES)
+    // would reject it.
+    const toBlobCalls: string[] = []
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+      toBlob: vi.fn((cb: BlobCallback, type?: string) => {
+        toBlobCalls.push(type ?? '')
+        if (type === 'image/webp') {
+          cb(null) // Safari iOS legacy behaviour
+        } else {
+          cb(new Blob(['jpegbytes'], { type: 'image/jpeg' }))
+        }
+      }),
+    }
+    document.createElement = vi.fn((tag: string) => {
+      if (tag === 'canvas') return mockCanvas as unknown as HTMLElement
+      return originalCreateElement(tag)
+    })
+
+    const file = makeFile('photo.heic', 'image/jpeg', 10_000) // post-iOS-conversion type
+    const result = await storage.compressImage(file)
+
+    expect(toBlobCalls).toEqual(['image/webp', 'image/jpeg'])
+    expect(result).toBeInstanceOf(File)
+    expect(result.type).toBe('image/jpeg')
+    expect(result.name).toMatch(/\.jpg$/)
+  })
+
+  it('throws a tagged [compressImage] error when both WebP and JPEG return null', async () => {
+    // Catastrophic case: neither encoder produces a blob. Must throw with a
+    // recognisable prefix so the caller (and our Eruda logs) can identify it.
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+      toBlob: vi.fn((cb: BlobCallback) => cb(null)),
+    }
+    document.createElement = vi.fn((tag: string) => {
+      if (tag === 'canvas') return mockCanvas as unknown as HTMLElement
+      return originalCreateElement(tag)
+    })
+
+    const file = makeFile('photo.jpg', 'image/jpeg', 10_000)
+    await expect(storage.compressImage(file)).rejects.toThrow(/\[compressImage\]/)
+  })
+
+  it('throws a tagged [compressImage] error when image decoding fails', async () => {
+    // Mirrors what happens when an unsupported MIME (e.g. raw HEIC) is
+    // dropped into <img>: onerror fires, the Promise rejects. The error
+    // message must contain the source MIME so we can diagnose it from
+    // production Eruda logs.
+    class MockBrokenImage {
+      constructor() {
+        const img: Partial<HTMLImageElement> & { _src: string } = {
+          _src: '',
+          onload: null,
+          onerror: null,
+        }
+        Object.defineProperty(img, 'src', {
+          set(value: string) {
+            img._src = value
+            if (typeof img.onerror === 'function') {
+              ;(img.onerror as () => void)()
+            }
+          },
+          get() {
+            return img._src
+          },
+        })
+        return img as unknown as MockBrokenImage
+      }
+    }
+    globalThis.Image = MockBrokenImage as unknown as typeof Image
+
+    const file = makeFile('weird.heic', 'image/heic', 10_000)
+    await expect(storage.compressImage(file)).rejects.toThrow(/\[compressImage\]/)
+  })
+
+  it('revokes the object URL even when image decoding fails', async () => {
+    // Prevent the previous bug where a failed decode would leak the blob URL
+    // (no revoke in the error path). Important for long-running PWA sessions.
+    class MockBrokenImage {
+      constructor() {
+        const img: Partial<HTMLImageElement> & { _src: string } = { _src: '', onload: null, onerror: null }
+        Object.defineProperty(img, 'src', {
+          set(value: string) {
+            img._src = value
+            if (typeof img.onerror === 'function') (img.onerror as () => void)()
+          },
+          get() { return img._src },
+        })
+        return img as unknown as MockBrokenImage
+      }
+    }
+    globalThis.Image = MockBrokenImage as unknown as typeof Image
+
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL')
+    const file = makeFile('weird.heic', 'image/heic', 10_000)
+    await storage.compressImage(file).catch(() => {})
+    expect(revokeSpy).toHaveBeenCalledWith('blob:mock-url')
+  })
 })
