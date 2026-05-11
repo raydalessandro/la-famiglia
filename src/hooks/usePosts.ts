@@ -3,7 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
 import { enqueueOperation } from '@/lib/offline-queue'
-import { PostWithDetails, CreatePostInput, PaginatedResponse } from '@/types/database'
+import {
+  PostWithDetails,
+  CreatePostInput,
+  PaginatedResponse,
+  ReactionEmoji,
+  MemberPublic,
+  PostReactionWithMember,
+} from '@/types/database'
 
 const PER_PAGE = 10
 
@@ -15,6 +22,11 @@ type UsePostsReturn = {
   loadMore: () => Promise<void>
   createPost: (input: CreatePostInput) => Promise<boolean>
   toggleLike: (postId: string) => Promise<void>
+  toggleReaction: (
+    postId: string,
+    emoji: ReactionEmoji,
+    currentMember: MemberPublic,
+  ) => Promise<void>
   addComment: (postId: string, text: string) => Promise<boolean>
   deletePost: (postId: string) => Promise<boolean>
   refetch: () => Promise<void>
@@ -55,6 +67,7 @@ export function usePosts(authorId?: string): UsePostsReturn {
   }, [fetchPosts])
 
   useRealtimeSubscription('posts', () => fetchPosts(), undefined, true)
+  useRealtimeSubscription('post_reactions', () => fetchPosts(), undefined, true)
 
   const loadMore = useCallback(async () => {
     const nextPage = page + 1
@@ -125,6 +138,65 @@ export function usePosts(authorId?: string): UsePostsReturn {
     }
   }, [])
 
+  const toggleReaction = useCallback(
+    async (
+      postId: string,
+      emoji: ReactionEmoji,
+      currentMember: MemberPublic,
+    ): Promise<void> => {
+      const hadIt = posts
+        .find((p) => p.id === postId)
+        ?.reactions.some(
+          (r) => r.member_id === currentMember.id && r.emoji === emoji,
+        )
+
+      // Optimistic update
+      setPosts((prev) =>
+        prev.map((p) => {
+          if (p.id !== postId) return p
+          if (hadIt) {
+            return {
+              ...p,
+              reactions: p.reactions.filter(
+                (r) =>
+                  !(r.member_id === currentMember.id && r.emoji === emoji),
+              ),
+            }
+          }
+          const optimistic: PostReactionWithMember = {
+            id: `temp-${Date.now()}`,
+            post_id: postId,
+            member_id: currentMember.id,
+            emoji,
+            created_at: new Date().toISOString(),
+            member: currentMember,
+          }
+          return { ...p, reactions: [...p.reactions, optimistic] }
+        }),
+      )
+
+      try {
+        const res = hadIt
+          ? await fetch(
+              `/api/posts/${postId}/reactions?emoji=${encodeURIComponent(emoji)}`,
+              { method: 'DELETE' },
+            )
+          : await fetch(`/api/posts/${postId}/reactions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ emoji }),
+            })
+        if (!res.ok) throw new Error('Reaction failed')
+        // Refetch to pick up the real reaction id from server
+        fetchPosts()
+      } catch {
+        // Rollback by refetching server truth
+        fetchPosts()
+      }
+    },
+    [posts, fetchPosts],
+  )
+
   const addComment = useCallback(async (postId: string, text: string): Promise<boolean> => {
     if (!navigator.onLine) {
       await enqueueOperation('add_comment', { post_id: postId, text })
@@ -163,6 +235,7 @@ export function usePosts(authorId?: string): UsePostsReturn {
     loadMore,
     createPost,
     toggleLike,
+    toggleReaction,
     addComment,
     deletePost,
     refetch: fetchPosts,

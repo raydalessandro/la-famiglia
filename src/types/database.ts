@@ -51,6 +51,7 @@ export type PostWithDetails = Post & {
   likes: PostLike[]
   comments_count: number
   liked_by_me: boolean
+  reactions: PostReactionWithMember[]
 }
 
 export type PostImage = {
@@ -78,6 +79,21 @@ export type PostComment = {
 
 export type PostCommentWithAuthor = PostComment & {
   author: MemberPublic
+}
+
+export const REACTION_EMOJIS = ['❤️', '😄', '👏'] as const
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number]
+
+export type PostReaction = {
+  id: string
+  post_id: string
+  member_id: string
+  emoji: ReactionEmoji
+  created_at: string
+}
+
+export type PostReactionWithMember = PostReaction & {
+  member: MemberPublic
 }
 
 export type Activity = {
@@ -236,7 +252,13 @@ export type AlbumPhoto = {
 export type Notification = {
   id: string
   member_id: string
-  type: 'activity_reminder' | 'new_event' | 'task_assigned' | 'new_post' | 'new_comment'
+  type:
+    | 'activity_reminder'
+    | 'new_event'
+    | 'task_assigned'
+    | 'new_post'
+    | 'new_comment'
+    | 'new_reaction'
   title: string
   body: string
   link: string | null

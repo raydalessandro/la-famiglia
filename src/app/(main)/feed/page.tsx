@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
-import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState } from '@/components/ui'
+import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, ReactionBar } from '@/components/ui'
 import { compressImage } from '@/lib/storage'
-import { PostWithDetails } from '@/types/database'
+import { PostWithDetails, ReactionEmoji, MemberPublic } from '@/types/database'
 
 const POST_TYPE_LABELS: Record<string, string> = {
   recipe: 'Ricetta',
@@ -34,11 +34,13 @@ function PostCard({
   post,
   currentMemberId,
   onLike,
+  onReact,
   onDelete,
 }: {
   post: PostWithDetails
   currentMemberId: string | undefined
   onLike: (id: string) => void
+  onReact: (id: string, emoji: ReactionEmoji) => void
   onDelete: (id: string) => void
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -154,6 +156,14 @@ function PostCard({
           </svg>
           <span className="text-sm font-medium">{post.comments_count}</span>
         </div>
+        <div className="ml-auto">
+          <ReactionBar
+            postId={post.id}
+            reactions={post.reactions}
+            currentMemberId={currentMemberId}
+            onToggle={(emoji) => onReact(post.id, emoji)}
+          />
+        </div>
       </div>
 
       {/* Delete confirm */}
@@ -179,7 +189,7 @@ function PostCard({
 
 export default function FeedPage() {
   const { member } = useAuth()
-  const { posts, isLoading, hasMore, loadMore, createPost, toggleLike, deletePost } = usePosts()
+  const { posts, isLoading, hasMore, loadMore, createPost, toggleLike, toggleReaction, deletePost } = usePosts()
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [formText, setFormText] = useState('')
@@ -282,6 +292,9 @@ export default function FeedPage() {
               post={post}
               currentMemberId={member?.id}
               onLike={toggleLike}
+              onReact={(id, emoji) => {
+                if (member) toggleReaction(id, emoji, member as MemberPublic)
+              }}
               onDelete={deletePost}
             />
           ))

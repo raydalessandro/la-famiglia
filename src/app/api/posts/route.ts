@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, toPublicMember } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { uploadImage } from '@/lib/storage'
-import { PostWithDetails, Member } from '@/types/database'
+import { PostWithDetails, Member, PostReactionWithMember } from '@/types/database'
 
 // Helper: fetch full PostWithDetails for a given post row
 async function buildPostWithDetails(
@@ -11,17 +11,26 @@ async function buildPostWithDetails(
 ): Promise<PostWithDetails> {
   const db = createServerClient()
 
-  const [authorResult, imagesResult, likesResult, commentsResult] = await Promise.all([
+  const [authorResult, imagesResult, likesResult, commentsResult, reactionsResult] = await Promise.all([
     db.from('members').select('*').eq('id', post.author_id).single(),
     db.from('post_images').select('*').eq('post_id', post.id).order('sort_order', { ascending: true }),
     db.from('post_likes').select('*').eq('post_id', post.id),
     db.from('post_comments').select('*', { count: 'exact', head: true }).eq('post_id', post.id),
+    db.from('post_reactions').select('*, members(*)').eq('post_id', post.id),
   ])
 
   const author = authorResult.data ? toPublicMember(authorResult.data as unknown as Member) : null
   const images = imagesResult.data ?? []
   const likes = likesResult.data ?? []
   const comments_count = commentsResult.count ?? 0
+
+  const reactions: PostReactionWithMember[] = (reactionsResult.data ?? []).map((r) => {
+    const { members: rawMember, ...reaction } = r as typeof r & { members: unknown }
+    return {
+      ...reaction,
+      member: toPublicMember(rawMember as Member),
+    }
+  })
 
   return {
     ...post,
@@ -31,6 +40,7 @@ async function buildPostWithDetails(
     likes,
     comments_count,
     liked_by_me: likes.some((l) => l.member_id === member.id),
+    reactions,
   }
 }
 
