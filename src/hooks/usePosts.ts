@@ -16,6 +16,10 @@ const PER_PAGE = 10
 
 type UsePostsReturn = {
   posts: PostWithDetails[]
+  /** Total posts in the queried set (server-side count, not just the loaded
+   * page). Used for profile stats — server already returns this so we just
+   * surface it. */
+  total: number
   isLoading: boolean
   error: string | null
   hasMore: boolean
@@ -34,6 +38,7 @@ type UsePostsReturn = {
 
 export function usePosts(authorId?: string): UsePostsReturn {
   const [posts, setPosts] = useState<PostWithDetails[]>([])
+  const [total, setTotal] = useState<number>(0)
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState<boolean>(false)
@@ -52,6 +57,7 @@ export function usePosts(authorId?: string): UsePostsReturn {
       const res = await fetch(buildUrl(1))
       const result: PaginatedResponse<PostWithDetails> = await res.json()
       setPosts(result.data)
+      setTotal(result.total)
       setHasMore(result.has_more)
       setPage(1)
     } catch (e) {
@@ -229,6 +235,7 @@ export function usePosts(authorId?: string): UsePostsReturn {
 
   return {
     posts,
+    total,
     isLoading,
     error,
     hasMore,
