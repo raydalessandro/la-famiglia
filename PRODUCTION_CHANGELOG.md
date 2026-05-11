@@ -8,6 +8,66 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-11 — Phase 5: front-end features (no DB)
+
+**Why**: round of Instagram/WhatsApp-style polish on the existing app —
+single-post page, image lightbox, click-user-anywhere-to-profile, enriched
+profile with stats. Code-only, no schema changes.
+
+**What to apply**
+
+Nothing manual on the DB. `vercel deploy` is enough.
+
+**What ships**
+
+- Route `/feed/[id]` (new) — single-post permalink with comments + composer.
+- `<ImageLightbox>` (new) — full-screen photo viewer with swipe / ESC /
+  arrows, used by post cards.
+- `<MemberLink>` (new) — click any avatar or member name → `/family/[id]`.
+  Applied in feed, chat messages, activities roles/attendees.
+- Enriched `/family/[id]` — 3-column Instagram-style post grid, member
+  stats (post count + joined-since), tap-through to single post.
+
+**Server-side additions**
+
+- `GET /api/posts/:id` (new) — single post fetch used by `/feed/[id]`.
+- `src/lib/posts.ts` (new) — `buildPostWithDetails` extracted, shared
+  between list / single / create endpoints.
+
+---
+
+## 2026-05-11 — Service worker hardening for Safari/iOS
+
+**Why**: a previous release pre-cached the auth-gated app shell
+(`['/feed', '/activities', '/calendar', '/chat', '/tasks']`) in
+`cache.addAll()` at install. Anonymous visitors hit the middleware's 302
+redirect to `/login`, which `cache.addAll()` rejects per spec. Chromium
+tolerated the resulting "redundant" SW state; **WebKit did not** — Safari
+users got blue-screen pages and pending-forever fetches.
+
+**What to apply**
+
+Nothing manual on the DB. `vercel deploy` ships the fix in `public/sw.js`.
+
+**Caveat for end users on broken Safari state**
+
+The fix lands server-side automatically, but devices that already have a
+corrupt v3/v4 SW need a one-time manual cleanup to drop it:
+
+- **Safari (Mac)**: Settings → Privacy → Manage Website Data → find the
+  domain → Remove.
+- **Safari (iOS web)**: Settings → Safari → Advanced → Website Data →
+  find the domain → swipe to remove.
+- **PWA installed on iOS home screen**: long-press the icon → Remove App,
+  then reinstall via Share → Add to Home Screen.
+
+After the cleanup the SW installs cleanly. Future deploys are unaffected.
+
+**Bumped `CACHE_NAME` to `la-famiglia-v5`** so clients still on a working
+v4 also receive the new file.
+
+---
+
 ## 2026-05-11 — Defensive RLS on every table
 
 **Why**: until now the project had no RLS. The browser anon key — public by

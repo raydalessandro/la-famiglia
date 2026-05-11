@@ -1,36 +1,125 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# La Famiglia
 
-## Getting Started
+PWA Next.js + Supabase per una famiglia italiana di 4-6 persone. Pensata
+per essere usata dai nonni: italiano, niente onboarding, niente jargon
+tecnico, target di tap minimo 44px, body 17px.
 
-First, run the development server:
+## Aree dell'app
 
-```bash
+- **Bacheca** (`/feed`) — post (foto, ricette, storie), like, reazioni
+  (❤️ 😄 👏), commenti, lightbox foto, pagina post singolo
+  `/feed/[id]`.
+- **Attività** (`/activities`) — eventi ricorrenti settimanali con
+  presenze per membro.
+- **Agenda** (`/calendar`) — eventi one-shot.
+- **Compiti** (`/tasks`) — to-do con assegnatari.
+- **Chat** (`/chat`, `/chat/[id]`) — dirette + gruppi, cluster WhatsApp.
+- **Famiglia** (`/family`, `/family/[id]`) — lista membri + profilo
+  arricchito.
+- **Album** (`/albums`, `/albums/[id]`) — gallerie foto.
+
+## Stack
+
+- Next.js 15 (App Router) + TypeScript
+- Tailwind CSS + design tokens custom
+- Supabase Postgres + Realtime + Storage
+- PWA con service worker custom (no library)
+- Auth custom: PIN + bcrypt + tabella `sessions` (no Supabase Auth)
+- Test: Vitest (unit + integration) + Playwright (e2e)
+
+## Prima volta sul progetto?
+
+**Leggi `HANDOFF.md`.** È il documento vivo che spiega convenzioni,
+componenti UI condivisi, design tokens, pattern colour-per-member, e
+soprattutto **cosa è da fare** (sezione "Fase 6"). Non scrivere codice
+senza averlo letto.
+
+## Sviluppo locale
+
+```sh
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Variabili d'ambiente richieste in `.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Per il push offline/notification servono anche le VAPID keys (vedi
+`src/lib/web-push.ts` per i nomi).
 
-## Learn More
+## Comandi
 
-To learn more about Next.js, take a look at the following resources:
+```sh
+npm run dev               # dev server
+npm run build             # production build
+npm run lint              # eslint
+npm run test              # vitest unit
+npm run test:integration  # vitest integration (richiede Supabase live)
+npm run e2e               # Playwright
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Database
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Le migrations stanno in `supabase/migrations/00X_*.sql`. Per applicarle:
 
-## Deploy on Vercel
+```sh
+supabase db push
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+(richiede Supabase CLI linkata al progetto remoto), oppure incolla il
+file SQL nel SQL editor della dashboard.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Le migration sono **idempotenti** (`CREATE TABLE IF NOT EXISTS`, ecc.).
+Vedi `HANDOFF.md` → "Pattern per nuove migrations" prima di aggiungere
+una migration nuova.
+
+**RLS difensive attive** (dal `008_rls_defensive.sql`): il client browser
+con anon key può solo leggere le tabelle realtime, niente scritture
+dirette. Tutte le mutazioni passano dalle API routes
+(`src/app/api/.../route.ts`) che usano `service_role` + `requireAuth()`.
+
+## Deploy
+
+Deploy automatico su Vercel via push su `main`. Le PR vengono mergiate su
+`main` automaticamente dal workflow del repo.
+
+**Operazioni manuali** (DB migrations, env vars, cleanup utenti): vedi
+`PRODUCTION_CHANGELOG.md`. Ogni release che richiede ops manuale ha
+un'entry datata lì.
+
+## Branch policy
+
+- `main` — produzione. Push automatico = deploy su Vercel.
+- `claude/fix-hydration-issues-Cp0Eu` — integration branch per il
+  lavoro in corso. Le PR partono da qui.
+- Niente altri branch a lungo termine. Tutto si fonde via PR.
+
+## Per chi sta scrivendo codice
+
+1. **Leggi `HANDOFF.md`** — convenzioni, componenti, pattern.
+2. Lavora sul branch indicato dall'utente (di default
+   `claude/fix-hydration-issues-Cp0Eu`).
+3. Commit atomici con messaggio in italiano, focus sul "perché".
+4. UI in italiano, copy adatto a nonni di 70 anni.
+5. Mai colori hard-coded — usa i token Tailwind.
+6. Usa i componenti UI esistenti (`src/components/ui/`), non
+   reinventare.
+7. Per ogni nuova migration → entry in `PRODUCTION_CHANGELOG.md`.
+8. Update `HANDOFF.md` quando chiudi una fase o sblocchi un follow-up.
+
+## Per chi sta usando Claude Code
+
+Quando apri una sessione, il modello inizia da zero. **Fai sempre leggere
+`HANDOFF.md`** come primo step:
+
+> "Leggi `HANDOFF.md` e dimmi cosa è prioritario da fare adesso."
+
+Il documento contiene il roster delle feature in pancia (Fase 6) con SQL
+pronto, API da aggiungere, UI da costruire e stima impatto. Una per
+sessione, modulari.
