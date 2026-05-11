@@ -20,6 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
+import type { MemberPublic } from '@/types/database'
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -394,6 +395,93 @@ describe('GET /api/activities', () => {
     for (const a of json.data) {
       expect(a.is_active).toBe(true)
     }
+  })
+
+  it('falls back to all active members when activity has no explicit participants', async () => {
+    // "Piscina" use case from the screenshots: the activity was created
+    // without a roster, but the family should still be able to confirm /
+    // skip from the Attività page. The route must fill `participants` with
+    // every active member.
+    const memberAlice: MemberPublic = { ...fakeMemberPublic, id: 'm-alice', name: 'Alice' }
+    const memberBob: MemberPublic = { ...fakeMemberPublic, id: 'm-bob', name: 'Bob' }
+
+    const db = makeMockDb({
+      activitiesSelect: { data: [fakeActivity], error: null },
+      participantsSelect: { data: [], error: null },
+      rolesSelect: { data: [], error: null },
+      statusSelect: { data: [], error: null },
+    })
+    // Override the default `members` branch on top of the factory so this
+    // single test can return a real roster without touching other tests.
+    const originalFrom = db.from as ReturnType<typeof vi.fn>
+    const baseImpl = originalFrom.getMockImplementation()
+    originalFrom.mockImplementation((table: string) => {
+      if (table === 'members') {
+        const inner: Record<string, (...args: unknown[]) => unknown> = {}
+        inner.select = vi.fn(() => inner)
+        inner.eq = vi.fn(() => Promise.resolve({ data: [memberAlice, memberBob], error: null }))
+        ;(inner as { then: unknown }).then = (resolve: (v: unknown) => unknown) =>
+          Promise.resolve({ data: [memberAlice, memberBob], error: null }).then(resolve)
+        return inner
+      }
+      return baseImpl ? baseImpl(table) : undefined
+    })
+    mockCreateServerClient.mockReturnValue(db)
+
+    const { GET } = await import('@/app/api/activities/route')
+    const req = makeRequest('GET', 'http://localhost/api/activities')
+    const res = await GET(req)
+
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data[0].participants).toHaveLength(2)
+    expect(json.data[0].participants.map((p: MemberPublic) => p.id)).toEqual([
+      'm-alice',
+      'm-bob',
+    ])
+  })
+
+  it('keeps the explicit roster when the activity already has participants', async () => {
+    // Counterpart to the previous test: when activity_participants has rows
+    // for an activity (e.g. only grandparents go to the pool), the route
+    // must NOT replace them with the full member list.
+    const explicit: MemberPublic = { ...fakeMemberPublic, id: 'only-grandpa', name: 'Nonno' }
+    const everyoneElse: MemberPublic = { ...fakeMemberPublic, id: 'm-everyone', name: 'Altro' }
+
+    const db = makeMockDb({
+      activitiesSelect: { data: [fakeActivity], error: null },
+      participantsSelect: {
+        data: [{ activity_id: 'act-1', member_id: 'only-grandpa', members: explicit }],
+        error: null,
+      },
+      rolesSelect: { data: [], error: null },
+      statusSelect: { data: [], error: null },
+    })
+    const originalFrom = db.from as ReturnType<typeof vi.fn>
+    const baseImpl = originalFrom.getMockImplementation()
+    originalFrom.mockImplementation((table: string) => {
+      if (table === 'members') {
+        const inner: Record<string, (...args: unknown[]) => unknown> = {}
+        inner.select = vi.fn(() => inner)
+        inner.eq = vi.fn(() =>
+          Promise.resolve({ data: [explicit, everyoneElse], error: null }),
+        )
+        ;(inner as { then: unknown }).then = (resolve: (v: unknown) => unknown) =>
+          Promise.resolve({ data: [explicit, everyoneElse], error: null }).then(resolve)
+        return inner
+      }
+      return baseImpl ? baseImpl(table) : undefined
+    })
+    mockCreateServerClient.mockReturnValue(db)
+
+    const { GET } = await import('@/app/api/activities/route')
+    const req = makeRequest('GET', 'http://localhost/api/activities')
+    const res = await GET(req)
+
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.data[0].participants).toHaveLength(1)
+    expect(json.data[0].participants[0].id).toBe('only-grandpa')
   })
 })
 

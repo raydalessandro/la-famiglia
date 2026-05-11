@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   const activityIds = activities.map((a) => a.id)
 
-  const [participantsRes, rolesRes, attendancesRes] = await Promise.all([
+  const [participantsRes, rolesRes, attendancesRes, allMembersRes] = await Promise.all([
     db
       .from('activity_participants')
       .select('activity_id, member_id, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
@@ -44,6 +44,13 @@ export async function GET(request: NextRequest) {
       .select('*')
       .in('activity_id', activityIds)
       .eq('week_start', weekStart),
+    // Active members are the fallback "everyone participates" pool used when
+    // an activity has no explicit row in activity_participants — keeps the
+    // confirm/skip UI usable for ad-hoc family activities like "Piscina".
+    db
+      .from('members')
+      .select('id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color')
+      .eq('is_active', true),
   ])
 
   if (participantsRes.error) {
@@ -55,6 +62,11 @@ export async function GET(request: NextRequest) {
   if (attendancesRes.error) {
     return NextResponse.json({ data: null, error: attendancesRes.error.message }, { status: 500 })
   }
+  if (allMembersRes.error) {
+    return NextResponse.json({ data: null, error: allMembersRes.error.message }, { status: 500 })
+  }
+
+  const allActiveMembers = (allMembersRes.data ?? []) as MemberPublic[]
 
   const participantsByActivity: Record<string, MemberPublic[]> = {}
   for (const row of participantsRes.data ?? []) {
@@ -83,13 +95,21 @@ export async function GET(request: NextRequest) {
     attendancesByActivity[row.activity_id].push(row)
   }
 
-  const result: ActivityWithDetails[] = activities.map((activity) => ({
-    ...activity,
-    participants: participantsByActivity[activity.id] ?? [],
-    roles: rolesByActivity[activity.id] ?? [],
-    attendances: attendancesByActivity[activity.id] ?? [],
-    weekly_status: null,
-  }))
+  const result: ActivityWithDetails[] = activities.map((activity) => {
+    // Fallback "everyone participates" when no explicit roster exists.
+    // We keep the explicit-roster path for sub-group activities (es. only
+    // grandparents go to the pool), but a brand-new activity without a
+    // roster is treated as family-wide so confirm/skip stays usable.
+    const explicit = participantsByActivity[activity.id]
+    const participants = explicit && explicit.length > 0 ? explicit : allActiveMembers
+    return {
+      ...activity,
+      participants,
+      roles: rolesByActivity[activity.id] ?? [],
+      attendances: attendancesByActivity[activity.id] ?? [],
+      weekly_status: null,
+    }
+  })
 
   return NextResponse.json({ data: result, error: null })
 }
