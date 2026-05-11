@@ -59,6 +59,19 @@ export async function GET() {
   const member = await getCurrentMember()
 
   if (!member) {
+    // Il cookie potrebbe esistere ancora browser-side anche se la riga
+    // `sessions` corrispondente nel DB è stata cancellata o è scaduta
+    // (cron di cleanup, logout su un altro device, manuale via admin).
+    // In quel caso il middleware — che fida del solo cookie — lascia
+    // passare l'utente su /feed, useAuth qui torna 401, AuthGuard
+    // redirige a /login, il middleware vede di nuovo il cookie e
+    // rispedisce a /feed. Loop infinito: blue screen.
+    //
+    // Cancellare il cookie qui rompe il loop: la prossima request a
+    // /login non avrà più il cookie, il middleware non redirigerà più,
+    // /login renderizzerà normalmente. deleteSession è no-op se il
+    // cookie già non c'è.
+    await deleteSession()
     return NextResponse.json({ data: null, error: 'Non autenticato' }, { status: 401 })
   }
 
