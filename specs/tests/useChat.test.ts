@@ -146,3 +146,30 @@ describe('useChat — realtime dedup', () => {
     expect(result.current.messages.map((m) => m.id)).toEqual(['msg-100', 'msg-101'])
   })
 })
+
+describe('useChat — message ordering', () => {
+  it('renders messages in ASC order even though API returns DESC', async () => {
+    // Server returns DESC (page 1 = most recent first). The hook must
+    // flip the page so the UI can render older-on-top, newer-on-bottom.
+    const serverDescPage = [
+      { ...NEW_MESSAGE, id: 'msg-3', text: 'terzo',  created_at: '2026-05-10T12:00:03Z' },
+      { ...NEW_MESSAGE, id: 'msg-2', text: 'secondo', created_at: '2026-05-10T12:00:02Z' },
+      { ...NEW_MESSAGE, id: 'msg-1', text: 'primo',   created_at: '2026-05-10T12:00:01Z' },
+    ]
+
+    global.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ data: serverDescPage, total: 3, page: 1, per_page: 30, has_more: false, error: null }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    ) as unknown as typeof fetch
+
+    const { result } = renderHook(() => useChat('group-1', [MEMBER]))
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.messages.map((m) => m.id)).toEqual(['msg-1', 'msg-2', 'msg-3'])
+  })
+})
