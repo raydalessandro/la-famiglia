@@ -111,7 +111,11 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
     try {
       const res = await fetch(buildUrl(1))
       const result: PaginatedResponse<ChatMessageWithAuthor> = await res.json()
-      setMessages(result.data)
+      // Server paginates DESC (page 1 = most recent). The chat UI renders
+      // ASC (older on top, newer at the bottom — WhatsApp / Telegram
+      // convention) so we reverse the page locally. Subsequent loadMore
+      // pages get prepended after the same flip.
+      setMessages([...result.data].reverse())
       setHasMore(result.has_more)
       setPage(1)
     } catch (e) {
@@ -178,7 +182,10 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
     try {
       const res = await fetch(buildUrl(nextPage))
       const result: PaginatedResponse<ChatMessageWithAuthor> = await res.json()
-      setMessages((prev) => [...result.data, ...prev])
+      // Same flip as fetchMessages: server gives us DESC, we keep state
+      // ASC. Page N+1 contains messages older than page N, so its reversed
+      // form goes at the TOP of the existing list.
+      setMessages((prev) => [...[...result.data].reverse(), ...prev])
       setHasMore(result.has_more)
       setPage(nextPage)
     } catch (e) {
