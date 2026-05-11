@@ -12,7 +12,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
-    include: ['specs/tests/**/*.test.ts'],
+    include: ['specs/tests/**/*.test.{ts,tsx}'],
     setupFiles: ['./specs/tests/setup.ts'],
     // Stub env vars so Supabase client initialises without crashing
     env: {
