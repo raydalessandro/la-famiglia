@@ -102,6 +102,13 @@ Vedi `src/app/(main)/chat/[id]/page.tsx`. Le regole:
 - Timestamp solo sull'**ultimo** bubble del cluster.
 - Radius `rounded-bubble` pieno, con angolo `rounded-br-md` (outgoing) / `rounded-bl-md` (incoming) **solo** sull'ultimo bubble del cluster.
 
+### Supabase / database
+
+- Le migrations sono in `supabase/migrations/00X_*.sql`, applicate manualmente dall'utente nella dashboard Supabase.
+- **Il progetto non usa RLS.** L'autorizzazione vive nelle API routes Next.js, che verificano `auth.uid()` e l'appartenenza alla famiglia prima di leggere/scrivere. Se ti viene voglia di aggiungere `create policy`, fermati e chiedi.
+- Realtime è opt-in: per ogni tabella che il client osserva via `subscribe()`, la migration deve fare `ALTER TABLE x REPLICA IDENTITY FULL` + `ALTER PUBLICATION supabase_realtime ADD TABLE x` (vedi `002_realtime.sql`).
+- Tutte le FK verso `members`/`posts`/`activities` usano `ON DELETE CASCADE`.
+
 ### Toast
 
 ```tsx
@@ -146,22 +153,71 @@ Tutti i provider sono in `src/app/layout.tsx` o `(main)/layout.tsx` — già mon
 
 3 emoji predefinite (❤️ 😄 👏) sotto ogni post, con stack avatar di chi ha reagito.
 
-**Richiede migration DB**:
-```sql
-create table post_reactions (
-  id uuid primary key default gen_random_uuid(),
-  post_id uuid not null references posts(id) on delete cascade,
-  member_id uuid not null references members(id) on delete cascade,
-  emoji text not null check (emoji in ('❤️','😄','👏')),
-  created_at timestamptz not null default now(),
-  unique (post_id, member_id, emoji)
-);
-```
-+ RLS policy: leggi se membro famiglia, scrivi solo own.
-+ Endpoint API `/api/posts/[id]/react` (POST/DELETE).
-+ UI: ReactionBar component sotto il body del post.
+**Pattern migrations del progetto — leggi prima di scrivere SQL.**
 
-**Non procedere senza che l'utente abbia applicato la migration in Supabase.** Chiedi conferma.
+Guarda `supabase/migrations/006_activity_attendances.sql` per il template.
+Convenzioni che questo repo segue:
+
+1. **NO RLS.** Il progetto non usa Row Level Security. L'autorizzazione è
+   fatta lato Next.js (API routes + server actions verificano `auth.uid()`
+   e l'appartenenza alla famiglia). Non aggiungere `create policy` né
+   `enable row level security` — non c'è in nessuna migration esistente e
+   romperesti il pattern. Se pensi di averne bisogno, ferma e chiedi
+   all'utente.
+2. **PK come UUID** con `gen_random_uuid()`.
+3. **FK con `ON DELETE CASCADE`** verso `posts` / `members`.
+4. **`CREATE TABLE IF NOT EXISTS`** + **`CREATE INDEX IF NOT EXISTS`** —
+   le migrations devono essere idempotenti.
+5. **Realtime opt-in** per le tabelle che il client osserva via subscription:
+   `ALTER TABLE x REPLICA IDENTITY FULL;` + `ALTER PUBLICATION supabase_realtime ADD TABLE x;`.
+   (Vedi `002_realtime.sql` per la lista completa delle tabelle realtime.)
+6. **Naming**: `007_*.sql` per il prossimo file. Numerazione sequenziale.
+
+**Migration completa da creare (`supabase/migrations/007_post_reactions.sql`)**:
+
+```sql
+-- ═══ POST REACTIONS — quick emoji reactions on bacheca posts ═══
+-- Three predefined emoji (❤️ 😄 👏). One row per (post, member, emoji);
+-- a member can leave multiple distinct emoji on the same post but cannot
+-- duplicate the same emoji. Avatars of reactors are shown in the UI.
+
+CREATE TABLE IF NOT EXISTS post_reactions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id     UUID REFERENCES posts(id) ON DELETE CASCADE NOT NULL,
+  member_id   UUID REFERENCES members(id) ON DELETE CASCADE NOT NULL,
+  emoji       TEXT NOT NULL CHECK (emoji IN ('❤️','😄','👏')),
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(post_id, member_id, emoji)
+);
+
+CREATE INDEX IF NOT EXISTS idx_post_reactions_post
+  ON post_reactions(post_id);
+
+CREATE INDEX IF NOT EXISTS idx_post_reactions_member
+  ON post_reactions(member_id);
+
+-- Realtime: when someone reacts, every other family member's feed updates.
+ALTER TABLE post_reactions REPLICA IDENTITY FULL;
+ALTER PUBLICATION supabase_realtime ADD TABLE post_reactions;
+```
+
+**Cosa serve oltre alla migration**:
+- API route: `src/app/api/posts/[id]/reactions/route.ts` con `POST` (toggle
+  on) e `DELETE` (toggle off). Usa il pattern delle altre route — vedi
+  `src/app/api/posts/[id]/comments/route.ts` per autenticazione + member
+  lookup + check famiglia.
+- Tipo TS: aggiungi `PostReaction` in `src/types/database.ts` e arricchisci
+  `PostWithDetails` con `reactions: PostReaction[]` (joined con member per
+  avatar).
+- Componente UI: `<ReactionBar post={post} />` sotto il body del post nel
+  feed. 3 bottoni emoji, ognuno con count + `<MiniAvatarStack>` di chi ha
+  reagito con quell'emoji.
+- Realtime subscription nel feed (`src/app/(main)/feed/page.tsx`) — guarda
+  come è fatta la subscription a `posts` e replicala per `post_reactions`.
+
+**Non procedere senza che l'utente abbia applicato la migration in
+Supabase.** Mostragli il file SQL, aspetta che confermi di averlo eseguito,
+poi scrivi il codice client/API.
 
 ### Attività page (priorità: dopo che l'utente apre Supabase con te)
 
