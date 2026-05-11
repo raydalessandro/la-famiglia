@@ -1,5 +1,5 @@
 import { createServerClient } from './supabase/client'
-import { Member, MemberPublic } from '../types/database'
+import { Member, MemberPublic, MemberSelf } from '../types/database'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import { cookies } from 'next/headers'
@@ -163,4 +163,21 @@ export function toPublicMember(member: Member): MemberPublic {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { pin_hash, notify_push, notify_telegram, telegram_chat_id, created_at, updated_at, ...publicMember } = member
   return publicMember as MemberPublic
+}
+
+/**
+ * Variante self/admin: mantiene le preferenze di notifica (notify_push,
+ * notify_telegram, telegram_chat_id) che `toPublicMember` strippa per
+ * privacy. Usato dalle API quando il caller è il proprietario del
+ * record o un admin: Settings ha bisogno di leggere lo stato corrente
+ * dei flag per popolare i toggle, altrimenti dopo un refresh dell'auth
+ * (es. dopo "Salva modifiche") il useEffect re-fetcha e legge
+ * `undefined`, riportando i toggle a OFF anche se in DB sono true.
+ *
+ * `pin_hash`, `created_at`, `updated_at` restano nascosti.
+ */
+export function toSelfMember(member: Member): MemberSelf {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { pin_hash, created_at, updated_at, ...rest } = member
+  return rest as MemberSelf
 }

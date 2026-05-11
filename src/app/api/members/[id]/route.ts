@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, requireAdmin, hashPin, verifyPin, toPublicMember } from '@/lib/auth'
+import { requireAuth, requireAdmin, hashPin, verifyPin, toPublicMember, toSelfMember } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { UpdateMemberInput } from '@/types/database'
 
@@ -17,7 +17,11 @@ const NON_ADMIN_ALLOWED_FIELDS: (keyof UpdateMemberInput | 'new_pin')[] = [
   'new_pin',
 ]
 
-// GET /api/members/:id → ApiResponse<MemberPublic>
+// GET /api/members/:id → ApiResponse<MemberPublic | MemberSelf>
+// Ritorna MemberSelf (con preferenze notifiche) se isSelf || isAdmin,
+// altrimenti MemberPublic. La Settings page consuma questo endpoint
+// per popolare i toggle notify_push / notify_telegram, quindi senza
+// la variante self i flag tornavano sempre a false dopo ogni refetch.
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   const auth = await requireAuth()
 
@@ -37,7 +41,9 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ data: null, error: 'Membro non trovato' }, { status: 404 })
   }
 
-  return NextResponse.json({ data: toPublicMember(member), error: null })
+  const canSeeSelf = auth.id === id || auth.is_admin
+  const payload = canSeeSelf ? toSelfMember(member) : toPublicMember(member)
+  return NextResponse.json({ data: payload, error: null })
 }
 
 // PATCH /api/members/:id (admin or self) → ApiResponse<MemberPublic>
@@ -118,7 +124,9 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ data: null, error: error?.message ?? 'Aggiornamento fallito' }, { status: 500 })
   }
 
-  return NextResponse.json({ data: toPublicMember(updated), error: null })
+  const canSeeSelfPatch = isSelf || isAdmin
+  const updatedPayload = canSeeSelfPatch ? toSelfMember(updated) : toPublicMember(updated)
+  return NextResponse.json({ data: updatedPayload, error: null })
 }
 
 // DELETE /api/members/:id (admin only) → ApiResponse<null>
