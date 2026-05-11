@@ -1,14 +1,22 @@
 // Bump this on every release that touches client-side code or the app shell —
 // the activate handler purges any cache whose name doesn't match, which is
 // what forces installed PWAs to pick up the new bundle.
-const CACHE_NAME = 'la-famiglia-v4'
-const APP_SHELL = ['/', '/feed', '/activities', '/calendar', '/chat', '/tasks']
+const CACHE_NAME = 'la-famiglia-v5'
 
-// Install: cache app shell
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
-  )
+// Why no APP_SHELL precache:
+// The previous version precached ['/feed', '/activities', '/calendar', ...]
+// but those routes are auth-gated — the Next middleware 302-redirects them
+// to /login for anonymous users. cache.addAll() rejects on any non-2xx
+// response (including redirects under some user agents), which makes the
+// whole install fail. Chromium tolerates the resulting "redundant" state,
+// WebKit does not — Safari users ended up with a stale v3 SW serving
+// against a v4 bundle, producing the blue-screen + frozen-pending-fetch
+// symptoms we saw in production. The fetch handler below is already
+// network-first with on-the-fly caching, so the runtime cache fills as the
+// user navigates — pre-warming was never load-bearing.
+
+// Install: skipWaiting only — no precache, so this never fails.
+self.addEventListener('install', () => {
   self.skipWaiting()
 })
 
@@ -27,6 +35,14 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
+  // Only handle same-origin GETs. Anything cross-origin (analytics, fonts
+  // from CDNs, Supabase Realtime / Storage) goes straight to the network
+  // — otherwise Safari has been seen to stall the request when the SW
+  // tries to cache an opaque response.
+  if (url.origin !== self.location.origin || request.method !== 'GET') {
+    return
+  }
+
   // Network-first for API calls
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
@@ -44,8 +60,15 @@ self.addEventListener('fetch', (event) => {
         (cached) =>
           cached ||
           fetch(request).then((response) => {
-            const clone = response.clone()
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+            // Only cache full 200 responses. Redirects and partial responses
+            // (range/206) must never enter the cache — otherwise the next
+            // load reads back a broken entry and the page stalls.
+            if (response.ok && response.status === 200 && response.type === 'basic') {
+              const clone = response.clone()
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, clone).catch(() => {})
+              })
+            }
             return response
           })
       )
@@ -53,13 +76,15 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Network-first for everything else (with cache fallback)
+  // Network-first for everything else (with cache fallback).
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.ok && request.method === 'GET') {
+        if (response.ok && response.status === 200 && response.type === 'basic') {
           const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, clone).catch(() => {})
+          })
         }
         return response
       })
