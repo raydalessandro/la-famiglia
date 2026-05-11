@@ -31,6 +31,31 @@ Aree principali:
 3. Push frequente — ogni feature è una PR atomica.
 4. Tutto il copy in italiano. Niente jargon tecnico esposto agli utenti.
 
+## Strumenti di debug
+
+### Eruda — console DevTools-like su iPhone (no Mac required)
+
+Apple non espone i DevTools su iOS senza un Mac. Per diagnosticare bug
+in produzione che si manifestano solo su Safari iPhone o sulla PWA
+installata, abbiamo integrato **Eruda** caricato da CDN, **opt-in via
+query param**, completamente invisibile agli utenti normali.
+
+- **Componente**: `src/components/debug/ErudaDevtools.tsx` (montato nel
+  root layout, strategy `beforeInteractive`).
+- **Attivazione**: aprire qualunque pagina con `?debug=1` nell'URL.
+  Una pallina viola appare in basso a destra — tap per aprire console,
+  network, storage, service-worker inspector. Il flag è persistente
+  via localStorage anche dopo navigazioni e refresh, incluso quando si
+  passa da Safari web alla PWA installata (stessa origin).
+- **Disattivazione**: `?debug=0` nell'URL → rimuove il flag.
+- **Off by default**: senza il flag, lo script di Eruda non viene
+  scaricato dal CDN. Zero costo per gli utenti normali.
+
+Quando ricevi un report tipo "schermata bianca / blue / non si carica"
+da un device iOS, **prima cosa** chiedi all'utente di aprire il sito
+con `?debug=1`, fare uno screenshot della console + del tab Network e
+mandartelo. Risparmia ore di tentativi alla cieca.
+
 ## Stato attuale (aggiornato 2026-05-11)
 
 L'app è in produzione su Vercel. Funziona su iOS Safari, Android Chrome,
