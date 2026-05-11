@@ -256,7 +256,7 @@ describe('DELETE /api/auth (logout)', () => {
 
   it('always returns 200 with data: null and error: null', async () => {
     const req = makeRequest('DELETE')
-    const res = await authDELETE(req as any)
+    const res = await authDELETE()
     const { status, body } = await parseResponse(res as unknown as Response)
 
     expect(status).toBe(200)
@@ -269,7 +269,7 @@ describe('DELETE /api/auth (logout)', () => {
     mockDeleteSession.mockResolvedValue(undefined)
 
     const req = makeRequest('DELETE')
-    const res = await authDELETE(req as any)
+    const res = await authDELETE()
     const { status } = await parseResponse(res as unknown as Response)
 
     expect(status).toBe(200)
@@ -290,7 +290,7 @@ describe('GET /api/auth (check session)', () => {
     mockGetCurrentMember.mockResolvedValue(MOCK_PUBLIC_MEMBER as any)
 
     const req = makeRequest('GET')
-    const res = await authGET(req as any)
+    const res = await authGET()
     const { status, body } = await parseResponse(res as unknown as Response)
 
     expect(status).toBe(200)
@@ -303,7 +303,7 @@ describe('GET /api/auth (check session)', () => {
     mockGetCurrentMember.mockResolvedValue(null)
 
     const req = makeRequest('GET')
-    const res = await authGET(req as any)
+    const res = await authGET()
     const { status, body } = await parseResponse(res as unknown as Response)
 
     expect(status).toBe(401)
@@ -325,7 +325,7 @@ describe('GET /api/setup', () => {
     mockCreateServerClient.mockReturnValue(makeSupabaseClient(null))
 
     const req = makeRequest('GET')
-    const res = await setupGET(req as any)
+    const res = await setupGET()
     const { status, body } = await parseResponse(res as unknown as Response)
 
     expect(status).toBe(200)
@@ -338,7 +338,7 @@ describe('GET /api/setup', () => {
     mockCreateServerClient.mockReturnValue(makeSupabaseClient(MOCK_MEMBER))
 
     const req = makeRequest('GET')
-    const res = await setupGET(req as any)
+    const res = await setupGET()
     const { status, body } = await parseResponse(res as unknown as Response)
 
     expect(status).toBe(200)

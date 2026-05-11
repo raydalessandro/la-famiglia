@@ -23,11 +23,8 @@ import {
   processQueue,
   getQueueSize,
   clearQueue,
-  // @ts-expect-error – constants are exported from the implementation
   DB_NAME,
-  // @ts-expect-error
   STORE_NAME,
-  // @ts-expect-error
   MAX_RETRIES,
 } from '../../src/lib/offline-queue'
 

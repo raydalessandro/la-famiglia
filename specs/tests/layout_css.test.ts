@@ -46,7 +46,11 @@ describe('Root layout — App Router conventions', () => {
   it('uses Viewport export for theme-color (not <meta> tag)', () => {
     expect(content).not.toMatch(/<meta\s+name="theme-color"/)
     // themeColor must live on the Viewport export per Next 14+ rules.
-    expect(content).toMatch(/export\s+const\s+viewport[\s\S]*themeColor:\s*['"]#E8A838['"]/)
+    // themeColor matches the page surface background (bg-surface). The earlier
+    // value #E8A838 (gold accent) was a vestige from before the dark theme
+    // landed — on mobile, the status bar should blend with the page bg, not
+    // shout in CTA gold.
+    expect(content).toMatch(/export\s+const\s+viewport[\s\S]*themeColor:\s*['"]#1a1a2e['"]/)
   })
 
   it('has <html lang="it">', () => {

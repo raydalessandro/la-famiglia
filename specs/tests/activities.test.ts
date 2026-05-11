@@ -150,9 +150,10 @@ function makeMockDb(overrides: Record<string, unknown> = {}) {
           inner.single = vi.fn(() => Promise.resolve(cfg.activitiesSelect))
           inner.maybeSingle = vi.fn(() => Promise.resolve(cfg.statusSelect))
           // Make it directly awaitable (for .select('*').eq(...) without .single())
-          ;(inner as unknown as Promise<unknown>).then = (
-            resolve: (v: unknown) => unknown
-          ) => Promise.resolve(cfg.activitiesSelect).then(resolve)
+          // Mock thenable: cast to any to bypass the strict 2-arg Promise.then
+          // signature; runtime behaviour is the only thing we care about here.
+          ;(inner as any).then = (resolve: (v: unknown) => unknown) =>
+            Promise.resolve(cfg.activitiesSelect).then(resolve)
           return inner
         })
         b.insert = vi.fn(() => {
@@ -175,9 +176,8 @@ function makeMockDb(overrides: Record<string, unknown> = {}) {
           const inner: Record<string, (...args: unknown[]) => unknown> = {}
           inner.eq = vi.fn(() => inner)
           inner.in = vi.fn(() => Promise.resolve(cfg.participantsSelect))
-          ;(inner as unknown as Promise<unknown>).then = (
-            resolve: (v: unknown) => unknown
-          ) => Promise.resolve(cfg.participantsSelect).then(resolve)
+          ;(inner as any).then = (resolve: (v: unknown) => unknown) =>
+            Promise.resolve(cfg.participantsSelect).then(resolve)
           return inner
         })
         b.insert = vi.fn(() => Promise.resolve(cfg.participantsInsert))
@@ -195,9 +195,8 @@ function makeMockDb(overrides: Record<string, unknown> = {}) {
           const inner: Record<string, (...args: unknown[]) => unknown> = {}
           inner.eq = vi.fn(() => inner)
           inner.in = vi.fn(() => Promise.resolve(cfg.rolesSelect))
-          ;(inner as unknown as Promise<unknown>).then = (
-            resolve: (v: unknown) => unknown
-          ) => Promise.resolve(cfg.rolesSelect).then(resolve)
+          ;(inner as any).then = (resolve: (v: unknown) => unknown) =>
+            Promise.resolve(cfg.rolesSelect).then(resolve)
           return inner
         })
         b.insert = vi.fn(() => Promise.resolve(cfg.rolesInsert))
@@ -217,9 +216,8 @@ function makeMockDb(overrides: Record<string, unknown> = {}) {
           inner.in = vi.fn(() => inner)
           inner.maybeSingle = vi.fn(() => Promise.resolve(cfg.statusSelect))
           inner.single = vi.fn(() => Promise.resolve(cfg.statusSelect))
-          ;(inner as unknown as Promise<unknown>).then = (
-            resolve: (v: unknown) => unknown
-          ) => Promise.resolve(cfg.statusSelect).then(resolve)
+          ;(inner as any).then = (resolve: (v: unknown) => unknown) =>
+            Promise.resolve(cfg.statusSelect).then(resolve)
           return inner
         })
         return b
@@ -270,7 +268,9 @@ function makeRequest(
   url: string,
   body?: unknown
 ): NextRequest {
-  const init: RequestInit = { method }
+  // Use a plain literal — DOM's RequestInit narrows `signal` to
+  // `AbortSignal | null` while NextRequest expects `AbortSignal | undefined`.
+  const init: { method: string; body?: string; headers?: Record<string, string> } = { method }
   if (body !== undefined) {
     init.body = JSON.stringify(body)
     init.headers = { 'Content-Type': 'application/json' }
@@ -703,8 +703,10 @@ describe('PATCH /api/activities/:id', () => {
 
     expect(res.status).toBe(200)
     // Verify the delete+insert pattern happened by checking the mock was called
+    // MockResult is a discriminated union — narrow to a returned value first
+    // before peeking at .value.
     const participantsTable = db.from.mock.results.find(
-      (r: { value: Record<string, unknown> }) => r.value && 'delete' in r.value
+      (r) => r.type === 'return' && r.value !== null && typeof r.value === 'object' && 'delete' in (r.value as object)
     )
     expect(participantsTable).toBeDefined()
   })

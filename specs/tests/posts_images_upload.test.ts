@@ -13,7 +13,7 @@
  * 4. GET /api/posts returns images array populated
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 
 describe('createServerClient — key selection', () => {
   const originalEnv = process.env
