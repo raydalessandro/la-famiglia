@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { getWeekStart } from '@/lib/dates'
 import { ActivityWithDetails, CreateActivityInput, MemberPublic, ActivityAttendance } from '@/types/database'
+import { emit } from '@/lib/notification-events'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth()
@@ -204,6 +205,19 @@ export async function POST(request: NextRequest) {
     attendances: [],
     weekly_status: null,
   }
+
+  // Notifica i partecipanti dell'attività appena creata (escluso il
+  // creatore). Solo loro: un'attività privata non spamma l'intera
+  // famiglia. Se non ci sono partecipanti, emit() esce silenziosamente.
+  emit('new_activity', {
+    sender: { id: currentMember.id, name: currentMember.name },
+    activity: {
+      id: activity.id,
+      title: activity.title,
+      icon: activity.icon ?? null,
+    },
+    participantIds: participant_ids ?? [],
+  }).catch((err) => console.error('emit new_activity failed:', err))
 
   return NextResponse.json({ data: result, error: null }, { status: 201 })
 }

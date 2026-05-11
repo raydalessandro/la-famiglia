@@ -269,6 +269,7 @@ export type Notification = {
   type:
     | 'activity_reminder'
     | 'new_event'
+    | 'new_activity'
     | 'task_assigned'
     | 'new_post'
     | 'new_comment'

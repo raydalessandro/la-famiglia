@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { uploadImage } from '@/lib/storage'
 import { buildPostWithDetails } from '@/lib/posts'
+import { emit } from '@/lib/notification-events'
 
 // GET /api/posts?page=1&per_page=10&author_id=xxx → PaginatedResponse<PostWithDetails>
 export async function GET(req: NextRequest) {
@@ -130,6 +131,13 @@ export async function POST(req: NextRequest) {
   }
 
   const postWithDetails = await buildPostWithDetails(post, member)
+
+  // Notifica tutta la famiglia del nuovo post (l'autore viene escluso
+  // dentro la definition del catalog).
+  emit('new_post', {
+    sender: { id: member.id, name: member.name },
+    post: { id: post.id, text, post_type },
+  }).catch((err) => console.error('emit new_post failed:', err))
 
   return NextResponse.json({ data: postWithDetails, error: null }, { status: 201 })
 }
