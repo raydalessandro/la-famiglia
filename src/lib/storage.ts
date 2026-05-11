@@ -71,7 +71,17 @@ export function getImageUrl(bucket: Bucket, path: string): string {
 
 /**
  * Compresses an image file client-side using the Canvas API.
- * Scales down to maxWidth if necessary, then encodes as WebP.
+ *
+ * Tries WebP first (smaller, supported by Chromium / Firefox / Safari
+ * 14+) and falls back to JPEG if the browser can't encode WebP — older
+ * iOS Safari returns `null` from `canvas.toBlob('image/webp', ...)`
+ * instead of throwing, which used to break the entire upload pipeline.
+ *
+ * Errors are surfaced via thrown exceptions with a tag prefix so the
+ * caller can decide whether to retry, fall back, or show a user-facing
+ * message. When debugging via Eruda on iPhone, look for `[compressImage]`
+ * in the console.
+ *
  * Must only be called in browser environments.
  */
 export async function compressImage(
@@ -81,18 +91,18 @@ export async function compressImage(
 ): Promise<File> {
   const objectUrl = URL.createObjectURL(file)
 
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => {
-      URL.revokeObjectURL(objectUrl)
-      resolve(image)
-    }
-    image.onerror = (err) => {
-      URL.revokeObjectURL(objectUrl)
-      reject(err)
-    }
-    image.src = objectUrl
-  })
+  let img: HTMLImageElement
+  try {
+    img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = () =>
+        reject(new Error(`[compressImage] decode failed for ${file.type || 'unknown type'}`))
+      image.src = objectUrl
+    })
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
 
   let width: number
   let height: number
@@ -109,24 +119,33 @@ export async function compressImage(
   canvas.width = width
   canvas.height = height
 
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    throw new Error('[compressImage] 2D context unavailable')
+  }
   ctx.drawImage(img, 0, 0, width, height)
 
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (b) => {
-        if (b) {
-          resolve(b)
-        } else {
-          reject(new Error('Canvas toBlob failed'))
-        }
-      },
-      'image/webp',
-      quality
-    )
-  })
+  // Try WebP, fall back to JPEG. We don't rely on feature detection
+  // because Safari iOS historically *claimed* to support WebP encoding
+  // and then quietly returned `null`. Safer to try and fall back on the
+  // actual call.
+  const tryEncode = (mime: 'image/webp' | 'image/jpeg') =>
+    new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((b) => resolve(b), mime, quality)
+    })
 
-  const newName = file.name.replace(/\.[^.]+$/, '.webp')
+  let blob: Blob | null = await tryEncode('image/webp')
+  let chosenMime: 'image/webp' | 'image/jpeg' = 'image/webp'
+  if (!blob) {
+    blob = await tryEncode('image/jpeg')
+    chosenMime = 'image/jpeg'
+  }
 
-  return new File([blob], newName, { type: 'image/webp' })
+  if (!blob) {
+    throw new Error('[compressImage] canvas.toBlob returned null for both webp and jpeg')
+  }
+
+  const extension = chosenMime === 'image/webp' ? '.webp' : '.jpg'
+  const newName = file.name.replace(/\.[^.]+$/, extension)
+  return new File([blob], newName, { type: chosenMime })
 }

@@ -30,11 +30,14 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="it">
-      <head>
-        {/* Debug-only on-device console. Opt-in via ?debug=1 — invisible
-         * to normal users. Vedi src/components/debug/ErudaDevtools.tsx. */}
-        <ErudaDevtools />
-      </head>
+      {/* Debug-only on-device console. Opt-in via ?debug=1 — invisible
+       * agli utenti normali. Posizionato a livello <html> (non dentro
+       * <head>) perché Next App Router gestisce automaticamente
+       * l'injection di <Script strategy="beforeInteractive"> nel <head>
+       * dell'HTML output, ed evita di avere un <head> manuale (cosa
+       * sconsigliata da Next: vedi specs/tests/layout_css.test.ts).
+       * Source: src/components/debug/ErudaDevtools.tsx. */}
+      <ErudaDevtools />
       <body className={`${inter.className} bg-[#1a1a2e] text-white min-h-screen`}>
         {children}
       </body>

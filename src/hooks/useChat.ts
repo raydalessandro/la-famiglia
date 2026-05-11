@@ -211,16 +211,19 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
   const sendMediaMessage = useCallback(
     async (file: File, messageType: 'image' | 'document'): Promise<boolean> => {
       try {
-        // For images, compress client-side to webp before upload to keep
-        // bandwidth low and dodge HEIC / unsupported MIME types. Fall back
-        // to the raw file if compression fails (e.g. on a browser that
-        // can't decode the source format).
+        // For images, compress client-side to webp (or jpeg fallback) before
+        // upload to keep bandwidth low and dodge HEIC / unsupported MIME
+        // types. If compression fails we still ship the original — the
+        // server-side ALLOWED_TYPES validation will reject HEIC explicitly,
+        // which is a better UX than a silent freeze.
         let toUpload = file
         if (messageType === 'image') {
           try {
             toUpload = await compressImage(file)
-          } catch {
-            // ignore — keep the original file
+          } catch (err) {
+            // Log per debug Eruda: vediamo l'errore reale al prossimo
+            // problema invece di doverci tornare sopra.
+            console.error('[sendMediaMessage] compression failed:', err)
           }
         }
 
@@ -232,8 +235,12 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
           method: 'POST',
           body: formData,
         })
+        if (!res.ok) {
+          console.error('[sendMediaMessage] upload failed:', res.status, await res.text().catch(() => ''))
+        }
         return res.ok
-      } catch {
+      } catch (err) {
+        console.error('[sendMediaMessage] unexpected error:', err)
         return false
       }
     },
