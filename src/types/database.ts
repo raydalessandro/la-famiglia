@@ -28,6 +28,20 @@ export type MemberPublic = {
   color: string
 }
 
+/**
+ * MemberPublic esteso con le preferenze di notifica personali. Esposto
+ * solo a se stessi o agli admin: contiene `telegram_chat_id` che è un
+ * identificatore privato del canale Telegram personale.
+ *
+ * Usato nelle GET/PATCH di /api/members/:id quando il caller è
+ * isSelf || isAdmin — vedi `toSelfMember` in lib/auth.ts.
+ */
+export type MemberSelf = MemberPublic & {
+  notify_push: boolean
+  notify_telegram: boolean
+  telegram_chat_id: string | null
+}
+
 export type Session = {
   id: string
   member_id: string
