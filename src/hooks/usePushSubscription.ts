@@ -29,11 +29,17 @@ type UsePushSubscriptionReturn = {
  * `PushManager.subscribe` vuole un `Uint8Array`. Conversione standard
  * documentata da MDN.
  */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const rawData = atob(base64)
-  const output = new Uint8Array(rawData.length)
+  // Allochiamo un ArrayBuffer esplicito (non SharedArrayBuffer): il tipo
+  // di ritorno è quindi Uint8Array<ArrayBuffer>, accettato come
+  // BufferSource da PushManager.subscribe — il default `new Uint8Array(N)`
+  // verrebbe inferito come Uint8Array<ArrayBufferLike> e il TS strict
+  // di Next.js rifiuterebbe l'assegnazione (issue noto TS 5.7).
+  const buffer = new ArrayBuffer(rawData.length)
+  const output = new Uint8Array(buffer)
   for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i)
   return output
 }
