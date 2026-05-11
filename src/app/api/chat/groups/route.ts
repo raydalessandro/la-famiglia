@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
+import { MemberPublic } from '@/types/database'
 
 // GET /api/chat/groups → ApiResponse<ChatGroup[]>
 // Returns groups where the authenticated member is a participant
@@ -77,9 +78,16 @@ export async function GET(_req: NextRequest) {
         unreadCount = count ?? 0
       }
 
+      // Supabase nests the joined row under `members`. Flatten to the
+      // MemberPublic[] shape the UI expects — otherwise direct-chat title
+      // resolution (`other.name`) silently falls back to "Chat diretta".
+      const flatMembers = (groupMembers ?? [])
+        .map((row: { members: unknown }) => row.members as MemberPublic | null)
+        .filter((m): m is MemberPublic => m !== null)
+
       return {
         ...group,
-        members: groupMembers ?? [],
+        members: flatMembers,
         last_message: lastMessage,
         unread_count: unreadCount,
       }
