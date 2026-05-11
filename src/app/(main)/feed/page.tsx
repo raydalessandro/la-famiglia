@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
-import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, ReactionBar } from '@/components/ui'
+import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, ReactionBar, MemberLink } from '@/components/ui'
 import { compressImage } from '@/lib/storage'
 import { PostWithDetails, ReactionEmoji, MemberPublic } from '@/types/database'
 
@@ -54,7 +54,11 @@ function PostCard({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <div className="flex items-center gap-3 min-w-0">
+        <MemberLink
+          memberId={post.author_id}
+          ariaLabel={`Apri il profilo di ${post.author.name}`}
+          className="flex items-center gap-3 min-w-0"
+        >
           <Avatar
             emoji={post.author.avatar_emoji}
             url={post.author.avatar_url}
@@ -67,7 +71,7 @@ function PostCard({
             <p className="font-semibold text-white text-[15px] leading-tight">{post.author.name}</p>
             <p className="text-white/40 text-xs">{formatRelativeTime(post.created_at)}</p>
           </div>
-        </div>
+        </MemberLink>
         <div className="flex items-center gap-2 shrink-0">
           {typeLabel && (
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${POST_TYPE_COLORS[post.post_type]}`}>

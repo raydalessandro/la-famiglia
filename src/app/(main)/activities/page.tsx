@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useActivities } from '@/hooks/useActivities'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, BottomSheet, IconPicker, ColorPicker, ParticipantPicker, MiniAvatarStack } from '@/components/ui'
+import { Avatar, BottomSheet, IconPicker, ColorPicker, ParticipantPicker, MiniAvatarStack, MemberLink } from '@/components/ui'
 import { ActivityWithDetails, CreateActivityInput, AttendanceStatus, MemberPublic } from '@/types/database'
 
 const DAYS_IT = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
@@ -217,8 +217,8 @@ function ActivityCard({
               <div className="flex flex-col gap-1.5">
                 {activity.roles.map((role) => {
                   const m = role.member ?? memberById.get(role.member_id)
-                  return (
-                    <div key={role.id} className="flex items-center gap-2">
+                  const row = (
+                    <>
                       {m && (
                         <Avatar
                           emoji={m.avatar_emoji}
@@ -232,6 +232,20 @@ function ActivityCard({
                         <p className="text-white/80 text-xs font-medium">{m?.name ?? 'Sconosciuto'}</p>
                         <p className="text-white/40 text-xs">{role.role_label}</p>
                       </div>
+                    </>
+                  )
+                  return m ? (
+                    <MemberLink
+                      key={role.id}
+                      memberId={m.id}
+                      ariaLabel={`Apri il profilo di ${m.name}`}
+                      className="flex items-center gap-2"
+                    >
+                      {row}
+                    </MemberLink>
+                  ) : (
+                    <div key={role.id} className="flex items-center gap-2">
+                      {row}
                     </div>
                   )
                 })}
@@ -275,8 +289,10 @@ function AttendeeRow({
       </p>
       <div className="flex flex-wrap gap-1.5">
         {members.map((m) => (
-          <div
+          <MemberLink
             key={m.id}
+            memberId={m.id}
+            ariaLabel={`Apri il profilo di ${m.name}`}
             className="flex items-center gap-1.5 bg-white/5 rounded-full pl-0.5 pr-2.5 py-0.5"
           >
             <Avatar
@@ -287,7 +303,7 @@ function AttendeeRow({
               size="sm"
             />
             <span className="text-white/80 text-xs">{m.name.split(' ')[0]}</span>
-          </div>
+          </MemberLink>
         ))}
       </div>
     </div>
