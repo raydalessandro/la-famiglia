@@ -1,7 +1,7 @@
 // Bump this on every release that touches client-side code or the app shell —
 // the activate handler purges any cache whose name doesn't match, which is
 // what forces installed PWAs to pick up the new bundle.
-const CACHE_NAME = 'la-famiglia-v3'
+const CACHE_NAME = 'la-famiglia-v4'
 const APP_SHELL = ['/', '/feed', '/activities', '/calendar', '/chat', '/tasks']
 
 // Install: cache app shell

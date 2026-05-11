@@ -8,6 +8,13 @@ export const metadata: Metadata = {
   title: 'La Famiglia',
   description: 'Il nostro spazio privato',
   manifest: '/manifest.webmanifest',
+  // iOS ignores manifest icons when "Add to Home Screen" runs — it picks up
+  // <link rel="apple-touch-icon"> explicitly. Without this, iOS falls back
+  // to a screenshot of the page, which on a dark app looks like a blob.
+  icons: {
+    icon: [{ url: '/favicon.png', type: 'image/png', sizes: '32x32' }],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
 }
 
 export const viewport: Viewport = {
