@@ -8,6 +8,53 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-11 — Web Push notifications (PWA only)
+
+**Why**: il backend per le notifiche push esisteva da tempo (libreria
+`web-push`, tabella `push_subscriptions`, service worker handler) ma
+mancava il "filo" client che chiedesse il permesso al browser e
+registrasse la PushSubscription. Il toggle in Settings salvava solo
+una preferenza nel DB → nessuna push veniva mai recapitata.
+
+**What to apply on production**
+
+Nessuna migration. Solo verificare che le tre env vars su Vercel
+siano configurate. Quelle senza prefisso `NEXT_PUBLIC_` sono già
+in uso dal codice server-side:
+
+- `VAPID_PUBLIC_KEY` — base64-url, generata con
+  `npx web-push generate-vapid-keys` (libreria già in package.json).
+- `VAPID_PRIVATE_KEY` — base64-url, lo stesso comando.
+- `VAPID_EMAIL` — mailto URL (es. `mailto:famiglia@example.com`).
+  Richiesto dallo standard VAPID per identificare il sender.
+
+Se le variabili non ci sono, `GET /api/push/public-key` torna 500 con
+messaggio "Notifiche push non configurate sul server" e il toggle in
+Settings mostra `toast.error` chiaro all'utente.
+
+**iOS caveat (importante)**
+
+Web Push su iPhone funziona **solo** se la PWA è stata aggiunta alla
+schermata Home (iOS 16.4+). Da Safari browser normale non funziona —
+è una limitazione Apple. L'hook `usePushSubscription` rileva questo
+caso (`support === 'needs-pwa-install'`) e mostra all'utente le
+istruzioni per installare la PWA prima di attivare il toggle.
+
+Su Android Chrome funziona sia in browser che in PWA.
+
+**Come testare**
+
+1. Aprire la PWA (iOS: aggiunta alla Home; Android/desktop: anche browser).
+2. Settings → toggle "Notifiche push" → tap → conferma il permesso del
+   sistema.
+3. Verifica nel DB Supabase: `select * from push_subscriptions where
+   member_id = '<id>'` deve avere una riga.
+4. Trigger reale: fai un'azione che genera notifica (commento sotto un
+   post di un altro, like, attività confermata, ecc.) → il device deve
+   ricevere la push.
+
+---
+
 ## 2026-05-11 — Phase 5: front-end features (no DB)
 
 **Why**: round of Instagram/WhatsApp-style polish on the existing app —

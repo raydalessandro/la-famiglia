@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
+import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { Avatar, Button, useToast } from '@/components/ui'
 
 const EMOJI_OPTIONS = [
@@ -33,6 +34,12 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const toast = useToast()
+
+  // Web Push lifecycle: support/permission/subscription state + enable/disable.
+  // Il toggle "Notifiche push" qui sotto pilota questo hook + la preferenza
+  // notify_push sul DB. Se enable fallisce (es. permesso negato), facciamo
+  // rollback del flag così l'UI non mente all'utente.
+  const push = usePushSubscription()
 
   // Fetch full member data (including notification prefs) on mount
   useEffect(() => {
@@ -251,20 +258,63 @@ export default function SettingsPage() {
             Notifiche
           </p>
 
-          {/* Push */}
+          {/* Push — pilotato dal hook usePushSubscription: a differenza
+           * di Telegram (solo preferenza DB), qui il toggle fa subito il
+           * lavoro tecnico (permesso browser + PushManager) perché serve
+           * una user gesture per il prompt. Il flag notify_push viene
+           * sincronizzato via PATCH solo se il sub/unsub va a buon fine. */}
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1 min-w-0 pr-3">
               <p className="text-sm font-medium text-white">Notifiche push</p>
-              <p className="text-xs text-white/40 mt-0.5">Ricevi notifiche sul dispositivo</p>
+              <p className="text-xs text-white/40 mt-0.5">
+                {push.support === 'needs-pwa-install'
+                  ? 'Aggiungi prima l\'app alla schermata Home (Condividi → Aggiungi a Home).'
+                  : push.support === 'unsupported'
+                  ? 'Questo browser non supporta le notifiche.'
+                  : push.permission === 'denied'
+                  ? 'Notifiche bloccate — sblocca dalle impostazioni del dispositivo.'
+                  : 'Ricevi notifiche sul dispositivo.'}
+              </p>
             </div>
             <button
               type="button"
-              onClick={() => setNotifyPush(!notifyPush)}
-              className={`relative h-6 w-11 rounded-full transition-colors ${
+              disabled={push.isPending || push.support !== 'supported' || push.permission === 'denied'}
+              onClick={async () => {
+                if (notifyPush) {
+                  // Off: prima il browser, poi il flag.
+                  const result = await push.disable()
+                  if (!result.ok) {
+                    toast.error(result.reason)
+                    return
+                  }
+                  setNotifyPush(false)
+                  await fetch(`/api/members/${member.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notify_push: false }),
+                  }).catch(() => {})
+                  toast.success('Notifiche disattivate.')
+                } else {
+                  const result = await push.enable()
+                  if (!result.ok) {
+                    toast.error(result.reason)
+                    return
+                  }
+                  setNotifyPush(true)
+                  await fetch(`/api/members/${member.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notify_push: true }),
+                  }).catch(() => {})
+                  toast.success('Notifiche attivate.')
+                }
+              }}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
                 notifyPush ? 'bg-[#E8A838]' : 'bg-white/20'
               }`}
               role="switch"
               aria-checked={notifyPush}
+              aria-label="Attiva o disattiva le notifiche push"
             >
               <span
                 className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
