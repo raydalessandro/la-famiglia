@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { PostWithDetails, ReactionEmoji } from '@/types/database'
-import { Avatar, ReactionBar, MemberLink } from '@/components/ui'
+import { Avatar, ReactionBar, MemberLink, ImageLightbox } from '@/components/ui'
 
 const POST_TYPE_LABELS: Record<string, string> = {
   recipe: 'Ricetta',
@@ -54,8 +54,10 @@ export function PostCard({
   onCommentsClick?: (id: string) => void
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const isOwn = post.author_id === currentMemberId
   const typeLabel = POST_TYPE_LABELS[post.post_type]
+  const imageUrls = post.images?.map((i) => i.image_url) ?? []
   const commentsButton = (
     <>
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -127,9 +129,12 @@ export function PostCard({
           }`}
         >
           {post.images.slice(0, 4).map((img, idx) => (
-            <div
+            <button
+              type="button"
               key={img.id}
-              className={`relative overflow-hidden bg-white/5 ${
+              onClick={() => setLightboxIndex(idx)}
+              aria-label={`Apri foto ${idx + 1} di ${post.images.length}`}
+              className={`relative overflow-hidden bg-white/5 active:scale-[0.98] transition-transform ${
                 post.images.length === 1 ? 'h-64' : 'h-40'
               } ${post.images.length === 3 && idx === 0 ? 'col-span-2' : ''}`}
             >
@@ -144,7 +149,7 @@ export function PostCard({
                   <span className="text-white font-bold text-xl">+{post.images.length - 4}</span>
                 </div>
               )}
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -192,6 +197,17 @@ export function PostCard({
           />
         </div>
       </div>
+
+      {/* Lightbox — opened from any of the image tiles above. Mounted at
+       * the article level (not inside the grid) so the overlay covers the
+       * full viewport regardless of the post's vertical position. */}
+      {lightboxIndex !== null && (
+        <ImageLightbox
+          images={imageUrls}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
 
       {/* Delete confirm */}
       {showDeleteConfirm && (
