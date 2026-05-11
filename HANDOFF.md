@@ -104,8 +104,12 @@ Vedi `src/app/(main)/chat/[id]/page.tsx`. Le regole:
 
 ### Supabase / database
 
-- Le migrations sono in `supabase/migrations/00X_*.sql`, applicate manualmente dall'utente nella dashboard Supabase.
-- **Il progetto non usa RLS.** L'autorizzazione vive nelle API routes Next.js, che verificano `auth.uid()` e l'appartenenza alla famiglia prima di leggere/scrivere. Se ti viene voglia di aggiungere `create policy`, fermati e chiedi.
+- Le migrations sono in `supabase/migrations/00X_*.sql`. Applicale via `supabase db push` (CLI linkata al progetto remoto) oppure incollandole nella dashboard SQL editor.
+- **RLS difensive attive dal 2026-05-11** (`008_rls_defensive.sql`):
+  - L'autenticazione resta custom (PIN + tabella `sessions`, non Supabase Auth) → `auth.uid()` non esiste.
+  - Tutte le API routes usano `createServerClient()` con `SUPABASE_SERVICE_ROLE_KEY`, che bypassa RLS by design. Per ogni endpoint **deve esserci `requireAuth()` o `requireAdmin()`** — l'autorizzazione vive lì.
+  - Per il client browser anon: SELECT consentito sulle 11 tabelle realtime (necessario per `postgres_changes`), tutto il resto negato. Le mutazioni dirette dal client sono bloccate ovunque.
+  - Se aggiungi una tabella nuova: includi nella nuova migration `ENABLE ROW LEVEL SECURITY`. Se la tabella va anche in realtime, aggiungi `CREATE POLICY "rls_defensive_select" ON x FOR SELECT TO anon, authenticated USING (true)`.
 - Realtime è opt-in: per ogni tabella che il client osserva via `subscribe()`, la migration deve fare `ALTER TABLE x REPLICA IDENTITY FULL` + `ALTER PUBLICATION supabase_realtime ADD TABLE x` (vedi `002_realtime.sql`).
 - Tutte le FK verso `members`/`posts`/`activities` usano `ON DELETE CASCADE`.
 
@@ -146,24 +150,28 @@ Tutti i provider sono in `src/app/layout.tsx` o `(main)/layout.tsx` — già mon
 | `ac91586` | Body 17px, touch 44px, BottomNav etichette IT, header z-30 |
 | `bd2effe` | Avatar ring colore-membro, chat WhatsApp con cluster, stripe per autore, card unificate |
 | `e03a901` | EmptyState component + 7 sostituzioni |
+| `df81f50` | Fase 1 — RLS difensive (008) + recovery file 007 + integration test suite |
+| `f86fc15` | Fase 2 (F3.2) — Post reactions: API + tipi + componente + integrazione feed |
+| `299e42e` | tsc clean (target ES2017, fix test-time type errors preesistenti) |
 
 ## Cosa resta da fare
 
-### F3.2 — Post reactions (priorità: bassa, richiede Supabase)
+### F3.2 — Post reactions ✅ DONE (commit `f86fc15`, 2026-05-11)
 
-3 emoji predefinite (❤️ 😄 👏) sotto ogni post, con stack avatar di chi ha reagito.
+Implementato. La tabella `post_reactions` era già stata applicata in
+produzione fuori repo; recuperato il file `007_post_reactions.sql`
+idempotente nel commit `df81f50`. API route `POST/DELETE
+/api/posts/[id]/reactions`, componente `<ReactionBar>` integrato nel feed,
+subscription realtime su `post_reactions`.
 
-**Pattern migrations del progetto — leggi prima di scrivere SQL.**
+**Convenzioni migrations** (template `006_activity_attendances.sql`):
 
-Guarda `supabase/migrations/006_activity_attendances.sql` per il template.
-Convenzioni che questo repo segue:
-
-1. **NO RLS.** Il progetto non usa Row Level Security. L'autorizzazione è
-   fatta lato Next.js (API routes + server actions verificano `auth.uid()`
-   e l'appartenenza alla famiglia). Non aggiungere `create policy` né
-   `enable row level security` — non c'è in nessuna migration esistente e
-   romperesti il pattern. Se pensi di averne bisogno, ferma e chiedi
-   all'utente.
+1. **RLS attive (`008_rls_defensive.sql`).** Per ogni nuova tabella:
+   - Includi `ENABLE ROW LEVEL SECURITY`.
+   - Se la tabella va anche in realtime, aggiungi una policy SELECT per
+     `anon, authenticated`.
+   - NON serve creare policy INSERT/UPDATE/DELETE: senza policy, anon è
+     in default-deny e service_role bypassa comunque.
 2. **PK come UUID** con `gen_random_uuid()`.
 3. **FK con `ON DELETE CASCADE`** verso `posts` / `members`.
 4. **`CREATE TABLE IF NOT EXISTS`** + **`CREATE INDEX IF NOT EXISTS`** —
@@ -173,7 +181,7 @@ Convenzioni che questo repo segue:
    (Vedi `002_realtime.sql` per la lista completa delle tabelle realtime.)
 6. **Naming**: `007_*.sql` per il prossimo file. Numerazione sequenziale.
 
-**Migration completa da creare (`supabase/migrations/007_post_reactions.sql`)**:
+**Migration di riferimento** (vedi `supabase/migrations/007_post_reactions.sql` nel repo):
 
 ```sql
 -- ═══ POST REACTIONS — quick emoji reactions on bacheca posts ═══
@@ -201,23 +209,40 @@ ALTER TABLE post_reactions REPLICA IDENTITY FULL;
 ALTER PUBLICATION supabase_realtime ADD TABLE post_reactions;
 ```
 
-**Cosa serve oltre alla migration**:
-- API route: `src/app/api/posts/[id]/reactions/route.ts` con `POST` (toggle
-  on) e `DELETE` (toggle off). Usa il pattern delle altre route — vedi
-  `src/app/api/posts/[id]/comments/route.ts` per autenticazione + member
-  lookup + check famiglia.
-- Tipo TS: aggiungi `PostReaction` in `src/types/database.ts` e arricchisci
-  `PostWithDetails` con `reactions: PostReaction[]` (joined con member per
-  avatar).
-- Componente UI: `<ReactionBar post={post} />` sotto il body del post nel
-  feed. 3 bottoni emoji, ognuno con count + `<MiniAvatarStack>` di chi ha
-  reagito con quell'emoji.
-- Realtime subscription nel feed (`src/app/(main)/feed/page.tsx`) — guarda
-  come è fatta la subscription a `posts` e replicala per `post_reactions`.
+Quanto realizzato sopra alla migration:
+- API route `src/app/api/posts/[id]/reactions/route.ts` (POST `{ emoji }`,
+  DELETE `?emoji=…`, idempotenti, notifica post author se reactor diverso).
+- Tipi `PostReaction`, `PostReactionWithMember`, `REACTION_EMOJIS` in
+  `src/types/database.ts`.
+- Componente `src/components/ui/ReactionBar.tsx` (aria-pressed +
+  aria-label con nomi reactor per accessibilità).
+- Subscription realtime su `post_reactions` in `usePosts`.
+- Test: `specs/tests/post_reactions.test.ts` (13), `ReactionBar.test.tsx`
+  (5), `e2e/reactions.spec.ts` (2 auth-wall smoke).
 
-**Non procedere senza che l'utente abbia applicato la migration in
-Supabase.** Mostragli il file SQL, aspetta che confermi di averlo eseguito,
-poi scrivi il codice client/API.
+### Security audit follow-up (priorità: medio-bassa)
+
+Audit del 2026-05-11 sulle 24 API routes (post-RLS difensive). Risultato:
+**tutti gli endpoint** chiamano `requireAuth()` o `requireAdmin()`, oppure
+sono intenzionalmente pubblici e giustificati (`/api/auth` POST/DELETE,
+`/api/auth/members` GET, `/api/setup` GET/POST). Nessuna route che parla
+al DB con `createServerClient()` senza prima validare la sessione.
+
+**Cosa manca**: copertura test. Esistono `*_authorization.test.ts` solo
+per `albums`, `events`, `tasks`, `activities`. Da aggiungere (per parità
+di coverage e per evitare regressioni future):
+
+- `chat_groups_authorization.test.ts` — verifica scoping per membership
+- `chat_messages_authorization.test.ts` — idem
+- `posts_authorization.test.ts` — author/admin checks su DELETE
+- `post_comments_authorization.test.ts` — auth wall
+- `post_like_authorization.test.ts` — auth wall
+- `notifications_authorization.test.ts` — self-scoping
+- `members_authorization.test.ts` — self-update vs admin
+- `reactions` è già coperto da `post_reactions.test.ts` (auth wall +
+  edge cases)
+
+Non è urgenza di sicurezza, solo copertura.
 
 ### Attività page (priorità: dopo che l'utente apre Supabase con te)
 
