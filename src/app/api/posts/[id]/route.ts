@@ -2,8 +2,35 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { deleteImage } from '@/lib/storage'
+import { buildPostWithDetails } from '@/lib/posts'
 
 type RouteContext = { params: Promise<{ id: string }> }
+
+// GET /api/posts/:id → ApiResponse<PostWithDetails>
+// Used by the single-post page /feed/[id] for direct URL access (shareable
+// permalinks) and as the source of truth for client-side refetches after a
+// reaction / like toggle.
+export async function GET(_req: NextRequest, { params }: RouteContext) {
+  const auth = await requireAuth()
+
+  if (auth instanceof NextResponse) return auth
+
+  const { id } = await params
+  const db = createServerClient()
+
+  const { data: post, error } = await db
+    .from('posts')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error || !post) {
+    return NextResponse.json({ data: null, error: 'Post non trovato' }, { status: 404 })
+  }
+
+  const postWithDetails = await buildPostWithDetails(post, auth)
+  return NextResponse.json({ data: postWithDetails, error: null })
+}
 
 // DELETE /api/posts/:id → ApiResponse<null> (author or admin only)
 export async function DELETE(_req: NextRequest, { params }: RouteContext) {

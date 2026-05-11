@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import { useChat, useChatGroups } from '@/hooks/useChat'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, Header, useToast, EmptyState } from '@/components/ui'
+import { Avatar, Header, useToast, EmptyState, MemberLink } from '@/components/ui'
 
 const FAMILY_EMOJIS = ['❤️', '😂', '😍', '🎉', '👏', '🙏', '😊', '🥰', '😘', '👋', '😎', '🤣', '😢', '🤔', '💪', '✨']
 
@@ -236,13 +236,18 @@ export default function ChatRoomPage() {
                     {!isOwn && (
                       <div className="w-8 shrink-0">
                         {isFirstOfGroup && (
-                          <Avatar
-                            emoji={msg.author.avatar_emoji}
-                            url={msg.author.avatar_url}
-                            name={msg.author.name}
-                            size="sm"
-                            color={msg.author.color}
-                          />
+                          <MemberLink
+                            memberId={msg.author_id}
+                            ariaLabel={`Apri il profilo di ${msg.author.name}`}
+                          >
+                            <Avatar
+                              emoji={msg.author.avatar_emoji}
+                              url={msg.author.avatar_url}
+                              name={msg.author.name}
+                              size="sm"
+                              color={msg.author.color}
+                            />
+                          </MemberLink>
                         )}
                       </div>
                     )}
@@ -252,12 +257,18 @@ export default function ChatRoomPage() {
                        * cluster, coloured by the author's identity colour so
                        * older readers track who said what at a glance. */}
                       {isFirstOfGroup && !isOwn && (
-                        <span
-                          className="text-[13px] font-semibold mb-0.5 ml-1"
-                          style={{ color: msg.author.color || '#E8A838' }}
+                        <MemberLink
+                          memberId={msg.author_id}
+                          ariaLabel={`Apri il profilo di ${msg.author.name}`}
+                          className="mb-0.5 ml-1"
                         >
-                          {msg.author.name}
-                        </span>
+                          <span
+                            className="text-[13px] font-semibold"
+                            style={{ color: msg.author.color || '#E8A838' }}
+                          >
+                            {msg.author.name}
+                          </span>
+                        </MemberLink>
                       )}
 
                       {/* Bubble — radius pinned at the corner closest to the
