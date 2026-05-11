@@ -162,17 +162,13 @@ function makeDb(cfg: TableConfig = {}) {
         // For count(*, { head: true }): the chain is .select(...).eq(...) and the
         // result is awaited directly (no .range). Make `inner` thenable too.
         if (isHeadCount) {
-          ;(inner as unknown as PromiseLike<unknown>).then = (
-            resolve: (v: unknown) => unknown
-          ) =>
+          ;(inner as any).then = (resolve: (v: unknown) => unknown) =>
             Promise.resolve(
               cfg.messagesSelect ?? { data: null, error: null, count: 0 }
             ).then(resolve)
         } else {
           // Allow `await db.from('chat_messages').select(...).eq(...)` (no .range)
-          ;(inner as unknown as PromiseLike<unknown>).then = (
-            resolve: (v: unknown) => unknown
-          ) =>
+          ;(inner as any).then = (resolve: (v: unknown) => unknown) =>
             Promise.resolve(
               cfg.messagesSelect ?? { data: [], error: null, count: 0 }
             ).then(resolve)
@@ -208,7 +204,7 @@ function makeDb(cfg: TableConfig = {}) {
     const noop: Record<string, unknown> = {}
     const methods = ['select', 'insert', 'update', 'delete', 'upsert', 'eq', 'in', 'order', 'range', 'single', 'maybeSingle']
     for (const m of methods) noop[m] = vi.fn(() => noop)
-    ;(noop as unknown as PromiseLike<unknown>).then = (resolve: (v: unknown) => unknown) =>
+    ;(noop as any).then = (resolve: (v: unknown) => unknown) =>
       Promise.resolve({ data: null, error: null }).then(resolve)
     return noop
   })

@@ -8,6 +8,69 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-11 — Defensive RLS on every table
+
+**Why**: until now the project had no RLS. The browser anon key — public by
+definition — could read `sessions.token` and INSERT/UPDATE/DELETE on every
+public table directly via the Supabase REST endpoint, bypassing the API
+routes. Closing that door is overdue.
+
+**What to apply**
+
+```sh
+supabase db push
+```
+
+This applies two files together (the second is the load-bearing one):
+
+- `supabase/migrations/007_post_reactions.sql` — recovery of the
+  `post_reactions` table that someone had created out-of-repo. Fully
+  idempotent (`CREATE TABLE IF NOT EXISTS`, guarded `ALTER PUBLICATION`).
+  If 007 is already marked applied on the remote, `db push` skips it.
+- `supabase/migrations/008_rls_defensive.sql` — enables RLS on every
+  public table. 11 realtime tables get a SELECT policy for `anon` and
+  `authenticated` so `postgres_changes` keeps working. The other 14
+  tables get RLS enabled with NO policies → default deny for non-privileged
+  roles. `service_role` bypasses RLS by design, so the API routes are
+  unaffected.
+
+**What does NOT need to happen**
+
+- No env var changes.
+- No code changes outside `supabase/migrations/`.
+- The browser realtime hooks (`useRealtimeSubscription`) keep functioning —
+  they only need SELECT, which the realtime tables still permit.
+
+**How to verify after applying**
+
+```sh
+npm run test:integration
+```
+
+Should report 7/7 GREEN. The same suite was 4/7 RED before the migration.
+
+---
+
+## 2026-05-11 — Post reactions (F3.2)
+
+**Why**: three quick-reaction emoji (❤️ 😄 👏) under every post, with an
+avatar stack of who reacted. Closes F3.2 in the handoff.
+
+**What to apply**
+
+The DB side was already in place (table `post_reactions` created out-of-repo
+and recovered by `007_post_reactions.sql` above). The app side ships as code:
+
+- `POST /api/posts/:id/reactions { emoji }` — 201 created or 200 idempotent
+- `DELETE /api/posts/:id/reactions?emoji=…` — 200 `{ removed }`
+- `<ReactionBar>` rendered in the feed PostCard
+- Realtime subscription on `post_reactions` so other members see updates live
+
+Nothing manual to do on the deploy beyond the standard `vercel deploy` —
+the migration is applied with the RLS one above.
+
+---
+
 ## 2026-05-10 — Activity weekly attendances (per-member)
 
 **Why**: replace the global `activity_weekly_status` (one row per
