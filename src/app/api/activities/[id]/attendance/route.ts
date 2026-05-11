@@ -47,21 +47,22 @@ export async function POST(
     return NextResponse.json({ data: null, error: 'Attività non trovata' }, { status: 404 })
   }
 
-  // Authorization: only participants OR admin can mark attendance.
-  const { data: participantsForAuth } = await db
+  // Tutti i membri attivi (autenticati via requireAuth sopra) possono
+  // confermare/saltare/modificare la presenza a qualsiasi attività di
+  // famiglia. Decisione di prodotto: l'app è "di famiglia", tutti
+  // possono dichiarare la propria presenza senza dover essere stati
+  // pre-selezionati come participant_ids.
+  //
+  // I `activity_participants` restano come metadata informativo ("chi
+  // normalmente fa parte di questa attività") e servono qui sotto per
+  // calcolare i destinatari delle notifiche push — non come gate
+  // d'accesso.
+  const { data: participantsForNotify } = await db
     .from('activity_participants')
     .select('member_id')
     .eq('activity_id', id)
 
-  const participantIds = (participantsForAuth ?? []).map((row) => row.member_id as string)
-  const isParticipant = participantIds.includes(currentMember.id)
-
-  if (!isParticipant && !currentMember.is_admin) {
-    return NextResponse.json(
-      { data: null, error: 'Non sei partecipante di questa attività' },
-      { status: 403 }
-    )
-  }
+  const participantIds = (participantsForNotify ?? []).map((row) => row.member_id as string)
 
   const { data: upserted, error: upsertError } = await db
     .from('activity_weekly_attendances')

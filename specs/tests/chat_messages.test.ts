@@ -97,11 +97,15 @@ vi.mock('@/lib/supabase/client', () => ({
   createServerClient: vi.fn(),
 }))
 
-// notifyMembers viene chiamato fire-and-forget dopo l'INSERT del messaggio.
-// Lo mocchiamo per ispezionare gli argomenti senza chiamare web-push reale.
-const mockNotifyMembers = vi.fn().mockResolvedValue(undefined)
-vi.mock('@/lib/notifications', () => ({
-  notifyMembers: mockNotifyMembers,
+// emit() viene chiamato fire-and-forget dopo l'INSERT del messaggio.
+// La route NON chiama più notifyMembers direttamente: tutto passa dal
+// catalog (lib/notification-events.ts). Mockiamo emit per ispezionare
+// che la route emetta l'evento corretto con il payload corretto —
+// la logica "chi notificare / come formattare" è testata in
+// notification_events.test.ts.
+const mockEmit = vi.fn().mockResolvedValue(undefined)
+vi.mock('@/lib/notification-events', () => ({
+  emit: mockEmit,
 }))
 
 // ---------------------------------------------------------------------------
@@ -474,26 +478,23 @@ describe('GET /api/chat/groups/:id/messages — pagination shape', () => {
 // rimasta fuori dal cablaggio iniziale).
 // ---------------------------------------------------------------------------
 
-describe('POST chat messages — notifica gli altri membri del gruppo', () => {
+describe('POST chat messages — emette evento chat_message', () => {
+  // Da quando la route usa il catalog `notification-events`, qui
+  // verifichiamo SOLO che la route emetta l'evento con il payload
+  // corretto. La logica "chi notificare / come formattare" è testata
+  // in notification_events.test.ts (vicino alla definition).
+
   beforeEach(() => {
     vi.clearAllMocks()
-    mockNotifyMembers.mockResolvedValue(undefined)
+    mockEmit.mockResolvedValue(undefined)
   })
 
-  it('chiama notifyMembers con i recipienti escluso il sender', async () => {
+  it('emette chat_message con sender + message dopo l\'INSERT', async () => {
     mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
     mockCreateServerClient.mockReturnValue(makeDb({
       membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
       messagesInsert: { data: MOCK_MESSAGE, error: null },
       messagesEnrich: { data: MOCK_MESSAGE, error: null },
-      groupMemberList: {
-        data: [
-          { member_id: 'member-1' }, // il sender — DEVE essere escluso
-          { member_id: 'member-2' },
-          { member_id: 'member-3' },
-        ],
-        error: null,
-      },
     }))
 
     const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
@@ -502,63 +503,25 @@ describe('POST chat messages — notifica gli altri membri del gruppo', () => {
     const res = await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
     expect(res.status).toBe(201)
 
-    expect(mockNotifyMembers).toHaveBeenCalledTimes(1)
-    const [recipients, type, title, body, link] = mockNotifyMembers.mock.calls[0]
-    expect(recipients).toEqual(['member-2', 'member-3']) // member-1 ESCLUSO
-    expect(type).toBe('chat_message')
-    expect(title).toBe('Mario') // nome del sender
-    expect(body).toBe('Ciao a tutti')
-    expect(link).toBe('/chat/group-1')
-  })
-
-  it('non chiama notifyMembers se il sender è l\'unico membro del gruppo', async () => {
-    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
-    mockCreateServerClient.mockReturnValue(makeDb({
-      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
-      messagesInsert: { data: MOCK_MESSAGE, error: null },
-      messagesEnrich: { data: MOCK_MESSAGE, error: null },
-      groupMemberList: {
-        data: [{ member_id: 'member-1' }], // solo il sender
-        error: null,
+    expect(mockEmit).toHaveBeenCalledTimes(1)
+    const [eventKey, payload] = mockEmit.mock.calls[0]
+    expect(eventKey).toBe('chat_message')
+    expect(payload).toMatchObject({
+      sender: { id: 'member-1', name: 'Mario' },
+      message: {
+        group_id: 'group-1',
+        text: 'Ciao a tutti',
+        message_type: 'text',
       },
-    }))
-
-    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
-      text: 'Eco',
     })
-    const res = await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
-    expect(res.status).toBe(201)
-
-    expect(mockNotifyMembers).not.toHaveBeenCalled()
   })
 
-  it('tronca testi lunghi a 80 caratteri con ellipsis', async () => {
+  it('propaga message_type="image" all\'evento per gli allegati', async () => {
     mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
     mockCreateServerClient.mockReturnValue(makeDb({
       membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
       messagesInsert: { data: MOCK_MESSAGE, error: null },
       messagesEnrich: { data: MOCK_MESSAGE, error: null },
-      groupMemberList: { data: [{ member_id: 'member-2' }], error: null },
-    }))
-
-    const longText = 'x'.repeat(200)
-    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
-      text: longText,
-    })
-    await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
-
-    const [, , , body] = mockNotifyMembers.mock.calls[0]
-    expect(body).toHaveLength(81) // 80 + ellipsis char
-    expect(body.endsWith('…')).toBe(true)
-  })
-
-  it('usa "📷 Foto" come snippet per messaggi image', async () => {
-    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
-    mockCreateServerClient.mockReturnValue(makeDb({
-      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
-      messagesInsert: { data: MOCK_MESSAGE, error: null },
-      messagesEnrich: { data: MOCK_MESSAGE, error: null },
-      groupMemberList: { data: [{ member_id: 'member-2' }], error: null },
     }))
 
     const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
@@ -567,45 +530,25 @@ describe('POST chat messages — notifica gli altri membri del gruppo', () => {
     })
     await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
 
-    const [, , , body] = mockNotifyMembers.mock.calls[0]
-    expect(body).toBe('📷 Foto')
+    const [, payload] = mockEmit.mock.calls[0]
+    expect(payload.message.message_type).toBe('image')
   })
 
-  it('usa "📎 File" come snippet per messaggi document', async () => {
+  it('non blocca la risposta 201 se emit fallisce (fire-and-forget)', async () => {
     mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
     mockCreateServerClient.mockReturnValue(makeDb({
       membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
       messagesInsert: { data: MOCK_MESSAGE, error: null },
       messagesEnrich: { data: MOCK_MESSAGE, error: null },
-      groupMemberList: { data: [{ member_id: 'member-2' }], error: null },
     }))
-
-    const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
-      message_type: 'document',
-      media_url: 'https://x/doc.pdf',
-    })
-    await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
-
-    const [, , , body] = mockNotifyMembers.mock.calls[0]
-    expect(body).toBe('📎 File')
-  })
-
-  it('non blocca la risposta 201 se notifyMembers fallisce (fire-and-forget)', async () => {
-    mockRequireAuth.mockResolvedValue(MEMBER_IN_GROUP as any)
-    mockCreateServerClient.mockReturnValue(makeDb({
-      membership: { data: { group_id: 'group-1', member_id: 'member-1' }, error: null },
-      messagesInsert: { data: MOCK_MESSAGE, error: null },
-      messagesEnrich: { data: MOCK_MESSAGE, error: null },
-      groupMemberList: { data: [{ member_id: 'member-2' }], error: null },
-    }))
-    mockNotifyMembers.mockRejectedValueOnce(new Error('VAPID giù'))
+    mockEmit.mockRejectedValueOnce(new Error('catalog fallito'))
 
     const req = makeRequest('POST', 'http://localhost/api/chat/groups/group-1/messages', {
       text: 'Test',
     })
     const res = await messagesPOST(req as any, { params: Promise.resolve({ id: 'group-1' }) })
-    // L'utente vede il messaggio inviato anche se la push non parte:
-    // il push è un nice-to-have, non un blocco del flow.
+    // L'utente vede il messaggio inviato anche se la pipeline notifiche
+    // è giù: la push è un nice-to-have, non un blocco del POST.
     expect(res.status).toBe(201)
   })
 })

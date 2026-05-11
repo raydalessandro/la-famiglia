@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { uploadImage } from '@/lib/storage'
-import { notifyMembers } from '@/lib/notifications'
+import { emit } from '@/lib/notification-events'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -211,39 +211,18 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       { onConflict: 'group_id,member_id' }
     )
 
-  // Notifica gli altri membri del gruppo (escluso il mittente). Fire-and-forget
-  // — gli errori vengono loggati ma non bloccano la risposta del POST, così
-  // l'utente vede subito il messaggio inviato anche se il push service è
-  // lento o down.
-  const { data: groupMembers } = await db
-    .from('chat_group_members')
-    .select('member_id')
-    .eq('group_id', groupId)
-
-  const recipientIds = ((groupMembers ?? []) as Array<{ member_id: string }>)
-    .map((m: { member_id: string }) => m.member_id)
-    .filter((id: string) => id !== member.id)
-
-  if (recipientIds.length > 0) {
-    // Snippet del body: testo troncato per messaggi di testo, etichetta
-    // per allegati. Title = nome del mittente per parallelo con WhatsApp.
-    const snippet =
-      messageType === 'image'
-        ? '📷 Foto'
-        : messageType === 'document'
-        ? '📎 File'
-        : text.length > 80
-        ? `${text.slice(0, 80)}…`
-        : text
-
-    notifyMembers(
-      recipientIds,
-      'chat_message',
-      member.name,
-      snippet,
-      `/chat/${groupId}`,
-    ).catch((err) => console.error('chat notifyMembers failed:', err))
-  }
+  // Notifica gli altri membri del gruppo. Tutta la logica (chi notificare,
+  // come formattare title/body/link) vive in lib/notification-events.ts —
+  // questa è solo l'emissione dell'evento.
+  emit('chat_message', {
+    sender: { id: member.id, name: member.name },
+    message: {
+      id: message.id,
+      group_id: groupId,
+      text: text.trim(),
+      message_type: messageType,
+    },
+  }).catch((err) => console.error('emit chat_message failed:', err))
 
   return NextResponse.json({ data: enriched ?? message, error: null }, { status: 201 })
 }

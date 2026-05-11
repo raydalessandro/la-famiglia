@@ -57,8 +57,10 @@ function ActivityCard({
     else pending.push(p)
   }
 
-  const isParticipant =
-    !!currentMemberId && activity.participants.some((p) => p.id === currentMemberId)
+  // Tutti i membri di famiglia loggati possono confermare la propria
+  // presenza, indipendentemente da participant_ids. Vedi il server
+  // (api/activities/:id/attendance) per la stessa logica.
+  const canMarkAttendance = !!currentMemberId
 
   // Map of member_id → MemberPublic for quick lookup in expanded notes section
   const memberById = new Map(activity.participants.map((p) => [p.id, p]))
@@ -84,7 +86,12 @@ function ActivityCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <p className="font-semibold text-white text-sm truncate">{activity.title}</p>
-              {isParticipant && (
+              {/* Pill "Tu: Confermi/Salti/..." — mostrata se l'utente ha
+               * espresso una scelta su quest'attività (a prescindere
+               * dall'essere participant ufficiale). Senza una scelta
+               * niente pill: evita "Tu: In attesa" rumoroso per ogni
+               * attività della famiglia. */}
+              {canMarkAttendance && myStatus && (
                 <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${MY_STATUS_PILL[myPillStatus]}`}>
                   {MY_STATUS_LABEL[myPillStatus]}
                 </span>
@@ -144,8 +151,10 @@ function ActivityCard({
         </div>
       </button>
 
-      {/* Status buttons — only shown to participants */}
-      {isParticipant && (
+      {/* Status buttons — visibili a tutti i membri loggati, anche se non
+       * pre-selezionati come participant_ids dell'attività. Tutti in
+       * famiglia possono dichiarare la propria presenza. */}
+      {canMarkAttendance && (
         <div className="px-4 pb-3 flex gap-2">
           <button
             onClick={() => onSetMyStatus(activity.id, 'confirmed')}
