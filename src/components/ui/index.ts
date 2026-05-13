@@ -1,4 +1,5 @@
 export { Avatar } from './Avatar'
+export { AppLauncher } from './AppLauncher'
 export { Badge } from './Badge'
 export { BottomSheet } from './BottomSheet'
 export { BottomNav } from './BottomNav'
