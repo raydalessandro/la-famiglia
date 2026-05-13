@@ -48,9 +48,7 @@ export const FAMILY_APPS: FamilyApp[] = [
     id: 'soldi-lab',
     name: 'Soldi Lab',
     description: 'Spese e budget di famiglia',
-    // TODO: URL probabile https://soldi-lab.vercel.app — sostituire
-    // quando confermato e attivare il card.
-    url: null,
+    url: 'https://soldi-lab.vercel.app',
     logoSrc: '/apps/soldi-lab.png',
     accent: '#2dd4bf',
   },
