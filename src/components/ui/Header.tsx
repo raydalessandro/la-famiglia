@@ -2,17 +2,13 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
+import { AppLauncher } from './AppLauncher'
 
 type HeaderProps = {
   title?: string
   showBack?: boolean
   rightAction?: React.ReactNode
 }
-
-// URL pubblico dell'app sorella "Spotimai" (player musicale di famiglia).
-// Aperto in nuova tab — non vogliamo che la PWA stacchi dalla schermata
-// di home iOS quando ci si naviga.
-const SPOTIMAI_URL = 'https://spotimai.vercel.app'
 
 export function Header({ title = 'La Famiglia', showBack, rightAction }: HeaderProps) {
   const router = useRouter()
@@ -28,8 +24,9 @@ export function Header({ title = 'La Famiglia', showBack, rightAction }: HeaderP
       }}
     >
       <div className="relative flex h-14 items-center px-4">
-        {/* Left zone — back button su pagine secondarie, link Music su
-         * top-level. Mai entrambi: showBack=true vince. */}
+        {/* Left zone — back button su pagine secondarie, AppLauncher
+         * (4 quadrati → griglia delle app sorelle) su top-level. Mai
+         * entrambi: showBack=true vince. */}
         <div className="flex">
           {showBack ? (
             <button
@@ -53,30 +50,7 @@ export function Header({ title = 'La Famiglia', showBack, rightAction }: HeaderP
               </svg>
             </button>
           ) : (
-            <a
-              href={SPOTIMAI_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex h-10 items-center gap-1.5 rounded-full px-2 text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-              aria-label="Apri Music (Spotimai)"
-            >
-              {/* Logo Spotimai — spirale verde su sfondo nero, copiato
-               * verbatim da Spotimai/public/favicon.svg per coerenza
-               * visiva con l'app sorella. Inline per evitare un round-trip
-               * di rete e ridurre il flash al primo render. */}
-              <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
-                <rect width="32" height="32" rx="6" fill="#09090b" />
-                <path
-                  d="M16 16 Q16 14, 14 14 T10 14 Q10 18, 14 18 T22 18 Q22 10, 14 10 T6 10 Q6 22, 18 22 T30 22 Q30 6, 14 6"
-                  stroke="#34d399"
-                  strokeWidth="1.5"
-                  fill="none"
-                  strokeLinecap="round"
-                  opacity="0.9"
-                />
-              </svg>
-              <span>Music</span>
-            </a>
+            <AppLauncher />
           )}
         </div>
 
