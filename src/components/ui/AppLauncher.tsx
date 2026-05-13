@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Image from 'next/image'
 import { BottomSheet } from './BottomSheet'
 import { FAMILY_APPS, FamilyApp } from '@/lib/family-apps'
@@ -15,9 +16,30 @@ import { FAMILY_APPS, FamilyApp } from '@/lib/family-apps'
  *
  * Il registry delle app vive in `src/lib/family-apps.ts`. Aggiungere
  * una nuova app è una entry in quel file + un logo in `public/apps/`.
+ *
+ * # Portal a document.body
+ *
+ * Il BottomSheet è renderizzato via `createPortal(..., document.body)`
+ * e NON come figlio dell'header. Motivo: l'header usa `backdrop-blur`
+ * (filter CSS) che crea un containing block alternativo per i child
+ * `position: fixed` su Chrome/Safari. Senza portal, il sheet con
+ * `bottom-0 / translate-y-full` veniva ancorato all'header invece che
+ * al viewport: i card rimanevano visibili sotto l'header anche da
+ * chiuso, e "chiudere" produceva una compressione verso l'alto invece
+ * di una discesa fuori schermo (bug riportato 13/05/2026).
  */
 export function AppLauncher() {
   const [open, setOpen] = useState(false)
+  // mounted gate per evitare di chiamare createPortal in SSR
+  // (document non esiste). Al primo render lato client, mounted resta
+  // false → niente portal → niente sheet nell'HTML iniziale, che è
+  // esattamente lo stato voluto (chiuso). Al second-render flippa true
+  // e il portal entra in DOM, sempre nello stato `isOpen=false`.
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   return (
     <>
@@ -43,17 +65,21 @@ export function AppLauncher() {
         </svg>
       </button>
 
-      <BottomSheet
-        isOpen={open}
-        onClose={() => setOpen(false)}
-        title="Le nostre app"
-      >
-        <div className="grid grid-cols-2 gap-3 pt-2">
-          {FAMILY_APPS.map((app) => (
-            <AppCard key={app.id} app={app} onOpen={() => setOpen(false)} />
-          ))}
-        </div>
-      </BottomSheet>
+      {mounted &&
+        createPortal(
+          <BottomSheet
+            isOpen={open}
+            onClose={() => setOpen(false)}
+            title="Le nostre app"
+          >
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              {FAMILY_APPS.map((app) => (
+                <AppCard key={app.id} app={app} onOpen={() => setOpen(false)} />
+              ))}
+            </div>
+          </BottomSheet>,
+          document.body,
+        )}
     </>
   )
 }
