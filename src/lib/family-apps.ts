@@ -40,9 +40,7 @@ export const FAMILY_APPS: FamilyApp[] = [
     id: 'cucina',
     name: 'Cucina in Famiglia',
     description: 'Le ricette di casa',
-    // TODO: aggiungere URL deploy quando l'app va live. Fino ad
-    // allora il card resta "In arrivo" (non cliccabile).
-    url: null,
+    url: 'https://ricette-lab.vercel.app',
     logoSrc: '/apps/cucina-in-famiglia.png',
     accent: '#A8B89C',
   },
