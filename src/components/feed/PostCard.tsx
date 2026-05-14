@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { PostWithDetails, ReactionEmoji } from '@/types/database'
 import { Avatar, ReactionBar, MemberLink, ImageLightbox } from '@/components/ui'
+import { Poll } from './Poll'
 
 const POST_TYPE_LABELS: Record<string, string> = {
   recipe: 'Ricetta',
@@ -45,6 +46,8 @@ export function PostCard({
   onReact,
   onDelete,
   onCommentsClick,
+  onPollVote,
+  onPollRetract,
 }: {
   post: PostWithDetails
   currentMemberId: string | undefined
@@ -52,6 +55,8 @@ export function PostCard({
   onReact: (id: string, emoji: ReactionEmoji) => void
   onDelete: (id: string) => void
   onCommentsClick?: (id: string) => void
+  onPollVote?: (postId: string, optionId: string) => void
+  onPollRetract?: (postId: string, optionId: string | null) => void
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
@@ -115,6 +120,15 @@ export function PostCard({
       {/* Text */}
       {post.text && (
         <p className="px-4 pb-3 text-white/90 text-body whitespace-pre-wrap">{post.text}</p>
+      )}
+
+      {/* Poll */}
+      {post.poll && onPollVote && onPollRetract && (
+        <Poll
+          poll={post.poll}
+          onVote={(optId) => onPollVote(post.id, optId)}
+          onRetract={(optId) => onPollRetract(post.id, optId)}
+        />
       )}
 
       {/* Images */}

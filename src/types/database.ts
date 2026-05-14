@@ -66,6 +66,43 @@ export type PostWithDetails = Post & {
   comments_count: number
   liked_by_me: boolean
   reactions: PostReactionWithMember[]
+  poll: PostPollWithResults | null
+}
+
+export type PostPoll = {
+  id: string
+  post_id: string
+  question: string
+  multi_choice: boolean
+  closes_at: string | null
+  created_at: string
+}
+
+export type PostPollOption = {
+  id: string
+  poll_id: string
+  label: string
+  sort_order: number
+  created_at: string
+}
+
+export type PostPollVote = {
+  id: string
+  poll_id: string
+  option_id: string
+  member_id: string
+  created_at: string
+}
+
+export type PostPollOptionWithResults = PostPollOption & {
+  vote_count: number
+  voted_by_me: boolean
+}
+
+export type PostPollWithResults = PostPoll & {
+  options: PostPollOptionWithResults[]
+  total_votes: number
+  is_closed: boolean
 }
 
 export type PostImage = {
@@ -329,6 +366,14 @@ export type CreatePostInput = {
   text: string
   post_type?: 'normal' | 'recipe' | 'story'
   images?: File[]
+  poll?: CreatePollInput
+}
+
+export type CreatePollInput = {
+  question: string
+  options: string[]
+  multi_choice?: boolean
+  closes_at?: string | null
 }
 
 export type CreateActivityInput = {
