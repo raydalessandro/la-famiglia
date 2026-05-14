@@ -21,6 +21,9 @@ const config: Config = {
           DEFAULT: "#1a1a2e",
           raised: "#16213e",
           high: "#1f2a4a",
+          // Sunken layer per input field: più scuro del background per dare
+          // affordance "qui dentro si scrive". Documentato in HANDOFF.md.
+          sunken: "#0f1729",
         },
 
         // Accent gold — chosen for AAA contrast (~9.8:1) on the navy surface.

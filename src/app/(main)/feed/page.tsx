@@ -354,67 +354,90 @@ export default function FeedPage() {
           </button>
 
           {pollEnabled && (
-            <div className="flex flex-col gap-3 p-4 rounded-xl bg-white/5 border border-white/10">
-              <input
-                value={pollQuestion}
-                onChange={(e) => setPollQuestion(e.target.value)}
-                placeholder="Domanda (es. Quando ci vediamo?)"
-                maxLength={200}
-                className="w-full bg-surface-sunken border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 text-body focus:outline-none focus:border-[#E8A838]/60"
-              />
-
-              <div className="flex flex-col gap-2">
-                {pollOptions.map((opt, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      value={opt}
-                      onChange={(e) => handlePollOptionChange(idx, e.target.value)}
-                      placeholder={`Opzione ${idx + 1}`}
-                      maxLength={100}
-                      className="flex-1 bg-surface-sunken border border-white/10 rounded-lg px-3 py-2 text-white placeholder-white/30 text-body focus:outline-none focus:border-[#E8A838]/60"
-                    />
-                    {pollOptions.length > MIN_POLL_OPTIONS && (
-                      <button
-                        onClick={() => handleRemovePollOption(idx)}
-                        className="shrink-0 w-9 h-9 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/50 hover:text-red-400 transition-colors flex items-center justify-center"
-                        aria-label={`Rimuovi opzione ${idx + 1}`}
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                ))}
+            <div className="flex flex-col gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+              {/* Header del blocco — separa visivamente dal resto del composer,
+                  così è chiaro che la domanda e le opzioni qui dentro NON
+                  sono il testo del post ma il sondaggio. */}
+              <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+                <span aria-hidden="true" className="text-base">📊</span>
+                <h3 className="text-sm font-semibold text-white">Sondaggio</h3>
               </div>
 
-              {pollOptions.length < MAX_POLL_OPTIONS && (
-                <button
-                  onClick={handleAddPollOption}
-                  className="self-start flex items-center gap-1.5 text-sm text-[#E8A838] hover:text-[#E8A838]/80 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Aggiungi opzione
-                </button>
-              )}
+              {/* Domanda */}
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="poll-question" className="text-caption text-white/70 font-medium">
+                  Domanda
+                </label>
+                <input
+                  id="poll-question"
+                  value={pollQuestion}
+                  onChange={(e) => setPollQuestion(e.target.value)}
+                  placeholder="Es. Dove andiamo a cena sabato?"
+                  maxLength={200}
+                  className="w-full bg-surface-sunken border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/40 text-body focus:outline-none focus:border-[#E8A838]/60"
+                />
+              </div>
 
-              <label className="flex items-center gap-3 cursor-pointer select-none">
+              {/* Risposte possibili */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-caption text-white/70 font-medium">
+                  Risposte possibili ({MIN_POLL_OPTIONS}–{MAX_POLL_OPTIONS})
+                </label>
+                <div className="flex flex-col gap-2">
+                  {pollOptions.map((opt, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        value={opt}
+                        onChange={(e) => handlePollOptionChange(idx, e.target.value)}
+                        placeholder={`Risposta ${idx + 1}`}
+                        maxLength={100}
+                        aria-label={`Risposta ${idx + 1}`}
+                        className="flex-1 bg-surface-sunken border border-white/10 rounded-lg px-3 py-2 text-white placeholder-white/40 text-body focus:outline-none focus:border-[#E8A838]/60"
+                      />
+                      {pollOptions.length > MIN_POLL_OPTIONS && (
+                        <button
+                          onClick={() => handleRemovePollOption(idx)}
+                          className="shrink-0 w-9 h-9 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/50 hover:text-red-400 transition-colors flex items-center justify-center"
+                          aria-label={`Rimuovi risposta ${idx + 1}`}
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {pollOptions.length < MAX_POLL_OPTIONS && (
+                  <button
+                    onClick={handleAddPollOption}
+                    className="self-start mt-1 flex items-center gap-1.5 text-sm text-[#E8A838] hover:text-[#E8A838]/80 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Aggiungi risposta
+                  </button>
+                )}
+              </div>
+
+              {/* Opzioni avanzate */}
+              <label className="flex items-center gap-3 cursor-pointer select-none pt-1">
                 <input
                   type="checkbox"
                   checked={pollMultiChoice}
                   onChange={(e) => setPollMultiChoice(e.target.checked)}
                   className="w-4 h-4 accent-[#E8A838]"
                 />
-                <span className="text-sm text-white/80">Permetti di scegliere più opzioni</span>
+                <span className="text-sm text-white/80">Permetti di scegliere più risposte</span>
               </label>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-caption text-white/50">
-                  Chiude il (lascia vuoto per sempre aperto)
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="poll-closes" className="text-caption text-white/70 font-medium">
+                  Chiusura sondaggio <span className="text-white/40 font-normal">(opzionale)</span>
                 </label>
                 <input
+                  id="poll-closes"
                   type="datetime-local"
                   value={pollClosesAt}
                   onChange={(e) => setPollClosesAt(e.target.value)}
