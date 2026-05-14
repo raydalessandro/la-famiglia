@@ -52,4 +52,13 @@ export const FAMILY_APPS: FamilyApp[] = [
     logoSrc: '/apps/soldi-lab.png',
     accent: '#2dd4bf',
   },
+  {
+    id: 'moto-ride',
+    name: 'Moto Ride',
+    description: 'Diario delle uscite in moto',
+    // TODO: aggiungere URL deploy quando l'app va live.
+    url: null,
+    logoSrc: '/apps/moto-ride.png',
+    accent: '#f97316',
+  },
 ]
