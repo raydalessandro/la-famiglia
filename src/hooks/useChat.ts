@@ -90,10 +90,14 @@ type UseChatReturn = {
   error: string | null
   hasMore: boolean
   loadMore: () => Promise<void>
-  sendMessage: (text: string) => Promise<boolean>
+  sendMessage: (text: string, replyToMessageId?: string | null) => Promise<boolean>
   sendMediaMessage: (file: File, messageType: 'image' | 'document') => Promise<boolean>
+  editMessage: (id: string, text: string) => Promise<boolean>
+  deleteMessage: (id: string) => Promise<boolean>
   markAsRead: () => Promise<void>
 }
+
+const DELETED_PLACEHOLDER = '[Messaggio eliminato]'
 
 export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessageWithAuthor[]>([])
@@ -148,30 +152,75 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
     return () => window.removeEventListener('focus', onFocus)
   }, [markAsRead])
 
-  // Realtime: enrich INSERT payload with author and append
+  // Realtime: INSERT → append; UPDATE → merge edited_at/deleted_at/text.
+  // Il payload realtime contiene SOLO la riga raw (senza join), quindi
+  // arricchiamo author dai members già caricati lato client e ricostruiamo
+  // reply_to da `messages` locali (best-effort). Se il messaggio citato non
+  // è nei messaggi caricati (es. cita un messaggio molto vecchio), reply_to
+  // resta null per questo evento; al prossimo refresh la GET arricchirà
+  // correttamente la citation.
   useRealtimeSubscription<ChatMessage>(
     'chat_messages',
     (event, payload) => {
-      if (event !== 'INSERT' || !payload.new) return
-      const msg = payload.new
-      if (msg.group_id !== groupId) return
-      const author = members.find((m) => m.id === msg.author_id) ?? {
-        id: msg.author_id,
-        name: 'Unknown',
-        avatar_emoji: null,
-        avatar_url: null,
-        family_role: '',
-        bio: '',
-        is_admin: false,
-        is_active: true,
-        color: '#000000',
+      const incoming = payload.new ?? payload.old
+      if (!incoming || incoming.group_id !== groupId) return
+
+      if (event === 'INSERT' && payload.new) {
+        const msg = payload.new
+        const author = members.find((m) => m.id === msg.author_id) ?? {
+          id: msg.author_id,
+          name: 'Unknown',
+          avatar_emoji: null,
+          avatar_url: null,
+          family_role: '',
+          bio: '',
+          is_admin: false,
+          is_active: true,
+          color: '#000000',
+        }
+        setMessages((prev) => {
+          // Dedup: il sender vede già il messaggio dal POST response, gli
+          // altri lo ricevono qui.
+          if (prev.some((m) => m.id === msg.id)) return prev
+          const cited = msg.reply_to_message_id
+            ? prev.find((m) => m.id === msg.reply_to_message_id)
+            : null
+          const replyRef = cited
+            ? {
+                id: cited.id,
+                text: cited.deleted_at ? DELETED_PLACEHOLDER : cited.text,
+                author: {
+                  id: cited.author.id,
+                  name: cited.author.name,
+                  color: cited.author.color,
+                },
+              }
+            : null
+          const text = msg.deleted_at ? DELETED_PLACEHOLDER : msg.text
+          const enriched: ChatMessageWithAuthor = {
+            ...msg,
+            text,
+            author,
+            reply_to: replyRef,
+          }
+          return [...prev, enriched]
+        })
+      } else if (event === 'UPDATE' && payload.new) {
+        // Edit (edited_at, text) e soft-delete (deleted_at) arrivano qui.
+        const msg = payload.new
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== msg.id) return m
+            const text = msg.deleted_at ? DELETED_PLACEHOLDER : msg.text
+            return {
+              ...m,
+              text,
+              edited_at: msg.edited_at,
+              deleted_at: msg.deleted_at,
+            }
+          }),
+        )
       }
-      const enriched: ChatMessageWithAuthor = { ...msg, author }
-      setMessages((prev) => {
-        // Dedup: avoid duplicates from realtime reconnects / backfills
-        if (prev.some((m) => m.id === enriched.id)) return prev
-        return [...prev, enriched]
-      })
     },
     `group_id=eq.${groupId}`,
     true
@@ -194,19 +243,64 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, groupId])
 
-  const sendMessage = useCallback(async (text: string): Promise<boolean> => {
+  const sendMessage = useCallback(
+    async (text: string, replyToMessageId?: string | null): Promise<boolean> => {
+      try {
+        const body: { text: string; reply_to_message_id?: string } = { text }
+        if (replyToMessageId) body.reply_to_message_id = replyToMessageId
+        const res = await fetch(`/api/chat/groups/${groupId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        return res.ok
+        // Realtime subscription handles appending the new message for other
+        // clients; the sender's optimistic insertion arrives via realtime too.
+      } catch {
+        return false
+      }
+    },
+    [groupId],
+  )
+
+  const editMessage = useCallback(async (id: string, text: string): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/chat/groups/${groupId}/messages`, {
-        method: 'POST',
+      const res = await fetch(`/api/chat/messages/${id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       })
+      if (res.ok) {
+        // Optimistic local update (in attesa che il realtime UPDATE arrivi
+        // anche al sender stesso). Niente race: se l'UPDATE arriva dopo,
+        // il merge in setMessages è idempotente.
+        const editedAt = new Date().toISOString()
+        setMessages((prev) =>
+          prev.map((m) => (m.id === id ? { ...m, text, edited_at: editedAt } : m)),
+        )
+      }
       return res.ok
-      // Realtime subscription handles appending the new message
     } catch {
       return false
     }
-  }, [groupId])
+  }, [])
+
+  const deleteMessage = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/chat/messages/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        const deletedAt = new Date().toISOString()
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === id ? { ...m, text: DELETED_PLACEHOLDER, deleted_at: deletedAt } : m,
+          ),
+        )
+      }
+      return res.ok
+    } catch {
+      return false
+    }
+  }, [])
 
   const sendMediaMessage = useCallback(
     async (file: File, messageType: 'image' | 'document'): Promise<boolean> => {
@@ -247,5 +341,16 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
     [groupId]
   )
 
-  return { messages, isLoading, error, hasMore, loadMore, sendMessage, sendMediaMessage, markAsRead }
+  return {
+    messages,
+    isLoading,
+    error,
+    hasMore,
+    loadMore,
+    sendMessage,
+    sendMediaMessage,
+    editMessage,
+    deleteMessage,
+    markAsRead,
+  }
 }

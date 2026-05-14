@@ -97,9 +97,27 @@ Samsung Internet e desktop. Testata sui device della famiglia.
   - Bugfix collaterale: `POST /api/posts` accetta ora post con solo
     foto o solo sondaggio (prima richiedeva sempre testo non vuoto).
   - Vedi PRODUCTION_CHANGELOG.md 2026-05-14 per dettagli ops.
+- **Fase 6.2 + 6.3** — Reply citation + edit/elimina messaggio chat:
+  - Migration `010_chat_message_replies.sql` (FK self
+    `reply_to_message_id` con `ON DELETE SET NULL`) e
+    `011_chat_message_edits.sql` (`edited_at` + `deleted_at` tombstone).
+  - API: POST/GET messages estesi con reply embedded; nuovo endpoint
+    `PATCH/DELETE /api/chat/messages/:id` per edit (finestra 2 min) e
+    soft-delete.
+  - UI: long-press / right-click su bubble → BottomSheet "Azioni messaggio"
+    (Rispondi / Modifica / Elimina condizionali). Sticky reply bar sopra
+    composer. Citation embedded sopra bubble con tap-to-scroll. Edit
+    inline (Enter = salva, Esc = annulla). Bubble eliminato in italic +
+    placeholder "[Messaggio eliminato]". Badge "· modificato" accanto al
+    timestamp.
+  - Realtime esteso in `useChat`: ascolta INSERT **e** UPDATE, merge dei
+    campi soft-delete/edit sui messaggi esistenti.
+  - Soft-delete server-side: il testo originale viene sostituito col
+    placeholder PRIMA della risposta API (no leak via response manipulation).
+  - Vedi PRODUCTION_CHANGELOG.md 2026-05-14 per dettagli ops.
 
 **Cosa NON è ancora stato fatto e dove sta**: vedi sezione **Fase 6**
-sotto (6.2–6.6).
+sotto (6.4–6.6).
 
 ## Convenzioni — leggi PRIMA di scrivere codice
 
@@ -286,107 +304,6 @@ per volta. Ognuna è atomica: può essere fatta da sola.
 
 Per ogni voce: cosa fare, perché serve, SQL pronto, API da aggiungere,
 UI da costruire, stima impatto.
-
----
-
-## 6.2 — Reply citation in chat (priorità: alta)
-
-**Cosa**. Tap-long o swipe su un messaggio chat → opzione "Rispondi". Il
-nuovo messaggio mostra in alto una citazione del messaggio originale
-(pattern WhatsApp).
-
-**Perché**. La famiglia ha già detto in test che a volte non si capisce
-"a quale messaggio sta rispondendo" — soprattutto nei gruppi.
-
-**Schema SQL** (nuovo file `010_chat_message_replies.sql`):
-
-```sql
--- ═══ CHAT MESSAGE REPLIES — quote a previous message ═══
--- Un messaggio può citare un altro messaggio dello stesso gruppo.
--- ON DELETE SET NULL: se il messaggio citato viene eliminato, la reply
--- rimane (mostriamo "Messaggio eliminato" nella citation).
-
-ALTER TABLE chat_messages
-  ADD COLUMN IF NOT EXISTS reply_to_message_id UUID
-    REFERENCES chat_messages(id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS idx_chat_messages_reply_to
-  ON chat_messages(reply_to_message_id)
-  WHERE reply_to_message_id IS NOT NULL;
-```
-
-**API**.
-- `POST /api/chat/groups/:id/messages` — accetta `reply_to_message_id?`
-  opzionale nel body
-- `GET /api/chat/groups/:id/messages` — include `reply_to: { id, text,
-  author_name, author_color } | null` per ogni messaggio (joining su
-  se stesso). Se `reply_to_message_id` è non-NULL ma il messaggio è stato
-  eliminato (FK SET NULL), `reply_to` è `null` e l'UI mostra
-  "Messaggio eliminato".
-
-**Tipi**:
-```ts
-type ChatMessage = ... & { reply_to_message_id: string | null }
-type ChatMessageWithAuthor = ... & {
-  reply_to: { id, text, author: { name, color } } | null
-}
-```
-
-**UI**.
-- In `src/app/(main)/chat/[id]/page.tsx`: long-press (500ms) o swipe-right
-  sul bubble → sticky bar in cima al composer "↩ Rispondi a [Marco]:
-  [testo troncato]" con X per annullare.
-- Sopra il bubble, se `reply_to` è non-null: piccola card embedded con
-  bar verticale nel colore dell'autore citato + nome + 1 riga di testo.
-  Tap sulla card embedded → scroll to original message + highlight 1s.
-
-**Stima**: 1 sessione (~2h). Niente tabelle nuove, solo una colonna +
-self-join. UI è la parte più consistente.
-
----
-
-## 6.3 — Edit / elimina messaggio chat (priorità: media)
-
-**Cosa**. Tap su un messaggio proprio → menu "Modifica" / "Elimina".
-Modifica = editor inline (max 2 minuti dopo invio), elimina = sostituisce
-il bubble con "Messaggio eliminato".
-
-**Perché**. Errori di battitura su mobile sono frequenti per i nonni. Oggi
-non c'è modo di correggerli — bisogna scrivere un altro messaggio.
-
-**Schema SQL** (file `011_chat_message_edits.sql`):
-
-```sql
--- ═══ CHAT MESSAGE EDITS / DELETES ═══
--- edited_at NULL = mai modificato. deleted_at NULL = non eliminato.
--- Tombstone soft-delete: la riga resta perché potrebbe avere
--- reply_to_message_id che la cita (vedi 010).
-
-ALTER TABLE chat_messages
-  ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-
-CREATE INDEX IF NOT EXISTS idx_chat_messages_active
-  ON chat_messages(group_id, created_at)
-  WHERE deleted_at IS NULL;
-```
-
-**API**.
-- `PATCH /api/chat/messages/:id { text }` — solo author, solo entro 2
-  minuti da `created_at` (window editabile, dopo restituisci 403)
-- `DELETE /api/chat/messages/:id` — solo author. Imposta `deleted_at`,
-  NON cancella la riga.
-- `GET /api/chat/groups/:id/messages` — se `deleted_at` non-null, sostituisci
-  `text` con stringa placeholder (`'[Messaggio eliminato]'`) lato server
-  per non leakare il testo originale.
-
-**UI**.
-- Long-press sul bubble proprio → menu (BottomSheet con due voci).
-- Editor inline: il bubble si trasforma in textarea, "Salva" / "Annulla".
-- Bubble eliminato: italic, opacity-50, text "Messaggio eliminato".
-- Badge "Modificato" piccolo sotto il timestamp se `edited_at` non-null.
-
-**Stima**: 1 sessione (~2h).
 
 ---
 

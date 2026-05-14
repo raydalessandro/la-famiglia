@@ -8,6 +8,86 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-14 — Reply citation + edit/elimina messaggio chat (Fase 6.2 + 6.3)
+
+**Why**. Due lamentele esplicite della famiglia durante l'uso reale della
+chat: (1) "non si capisce a chi sto rispondendo nei gruppi grandi" — fix
+con pattern WhatsApp di citazione. (2) "ho fatto un errore di battitura e
+non posso correggerlo" — fix con edit inline entro 2 minuti + soft-delete.
+
+**What to apply on production**
+
+```sh
+supabase db push
+```
+
+Applica due migration:
+- `010_chat_message_replies.sql` — aggiunge `chat_messages.reply_to_message_id`
+  (UUID NULL, FK self con `ON DELETE SET NULL`) + index parziale. Il
+  `ON DELETE SET NULL` garantisce che eliminare un messaggio NON cancelli
+  le reply che lo citano (mostriamo "Messaggio eliminato" nella citation).
+- `011_chat_message_edits.sql` — aggiunge `chat_messages.edited_at` e
+  `chat_messages.deleted_at` (entrambi TIMESTAMPTZ NULL) + index parziale
+  `WHERE deleted_at IS NULL`. Soft-delete tombstone, non hard-delete: la
+  riga resta perché potrebbe avere reply che la citano.
+
+**Già applicate sul progetto remoto `la-famiglia` il 2026-05-14** via
+`supabase db push` (linked).
+
+**Modello soft-delete (importante)**: il server **sostituisce `text`** con
+`"[Messaggio eliminato]"` PRIMA di rispondere alla GET messages quando
+`deleted_at` è non-NULL. Lato API il testo originale non lascia mai il
+DB → il client non può leggerlo manipolando la response. Lo stesso vale
+per la citazione embedded di un messaggio eliminato.
+
+**Finestra di edit**: 2 minuti da `created_at`. Decisione di prodotto:
+lungo abbastanza per correggere typo/autocorrect, corto abbastanza da
+impedire di riscrivere la storia di una conversazione. La costante è
+duplicata client/server (`EDIT_WINDOW_MS`) — server resta source of truth
+(403 dopo i 2 minuti).
+
+**API**
+
+- `POST /api/chat/groups/:id/messages` — accetta ora `reply_to_message_id?`
+  (JSON o FormData). Validato server-side: deve esistere ed essere dello
+  STESSO gruppo (impedisce di citare messaggi di altri gruppi tramite id
+  pinchato dalla rete).
+- `GET /api/chat/groups/:id/messages` — include ora `reply_to: { id, text,
+  author: { id, name, color } } | null` con self-join su `chat_messages`.
+  Soft-delete placeholder applicato sia al messaggio principale sia al
+  `reply_to` embedded.
+- `PATCH /api/chat/messages/:id { text }` — solo autore, solo entro 2 min,
+  imposta `edited_at = now()`. 403 fuori finestra, 410 se già eliminato.
+- `DELETE /api/chat/messages/:id` — solo autore. Imposta `deleted_at = now()`,
+  idempotente (riapplicato = no-op che ritorna il timestamp originale).
+
+**UI** (`src/app/(main)/chat/[id]/page.tsx` riscritto):
+- Long-press 500ms (touch) o right-click (desktop) su un bubble → BottomSheet
+  "Azioni messaggio" con voci condizionali: Rispondi (sempre), Modifica (solo
+  proprio + dentro finestra 2 min), Elimina (solo proprio).
+- Sticky reply bar sopra il composer quando si sta rispondendo: bar verticale
+  colore membro + autore + preview text + bottone X per annullare.
+- Citation embedded sopra ogni bubble con `reply_to` non-NULL: card piccola
+  con border-left colore membro citato + nome + 1 riga text troncato.
+  Tap → scroll al messaggio originale con highlight ring 1.2s.
+- Edit inline: il bubble si trasforma in textarea + "Annulla" / "Salva".
+  Enter = salva, Esc = annulla. Optimistic update locale + realtime UPDATE
+  per gli altri.
+- Bubble eliminato: italic, opacity-60, testo "[Messaggio eliminato]".
+- Badge "· modificato" accanto al timestamp se `edited_at` non-NULL.
+
+**Realtime**: `useChat` ora ascolta INSERT **e** UPDATE su `chat_messages`.
+INSERT arricchisce `reply_to` via lookup nei messaggi già caricati
+(best-effort: se il citato è scrollato fuori della pagina, la citation appare
+al prossimo refresh). UPDATE applica merge di `text` / `edited_at` /
+`deleted_at` mantenendo `author` e `reply_to` esistenti.
+
+**Side effect su dati esistenti**: nessuno. Tutte le colonne nuove sono
+NULL di default, le righe vecchie restano valide; soft-delete e reply
+sono opt-in via UI.
+
+---
+
 ## 2026-05-14 — Sondaggi nei post (Fase 6.1)
 
 **Why**: sblocca decisioni di famiglia coordinate ("Quando ci vediamo?

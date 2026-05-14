@@ -3,8 +3,52 @@ import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { uploadImage } from '@/lib/storage'
 import { emit } from '@/lib/notification-events'
+import type { ChatMessage, ChatMessageReplyRef, ChatMessageWithAuthor, MemberPublic } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
+
+const DELETED_PLACEHOLDER = '[Messaggio eliminato]'
+
+// Shape della relazione self-join `reply_to` come Supabase ce la consegna:
+// solo i campi richiesti + author nested.
+type RawReplyJoin = {
+  id: string
+  text: string
+  deleted_at: string | null
+  author: { id: string; name: string; color: string } | null
+} | null
+
+/**
+ * Trasforma il payload Supabase con il join `reply_to` nello shape pulito
+ * `ChatMessageWithAuthor`. Applica anche il tombstone per soft-delete:
+ *
+ *   1. Se il messaggio è esso stesso `deleted_at` non-NULL → `text` viene
+ *      sostituito con "[Messaggio eliminato]" PRIMA di lasciare il server,
+ *      così il client non vede mai il testo originale anche manipolando
+ *      la response.
+ *   2. Se il `reply_to` ha `deleted_at` non-NULL → stesso trattamento sulla
+ *      citazione embedded.
+ *   3. Se `reply_to_message_id` è non-NULL ma il join torna NULL → il
+ *      messaggio originale è stato hard-deleted (impossibile col solo
+ *      tombstone, ma per robustezza). In quel caso `reply_to` è NULL e la
+ *      UI mostrerà comunque "Messaggio eliminato" leggendo lo stato.
+ */
+function shapeMessage(
+  raw: ChatMessage & { author: MemberPublic; reply_to?: RawReplyJoin },
+): ChatMessageWithAuthor {
+  const text = raw.deleted_at ? DELETED_PLACEHOLDER : raw.text
+
+  let reply_to: ChatMessageReplyRef | null = null
+  if (raw.reply_to && raw.reply_to.author) {
+    reply_to = {
+      id: raw.reply_to.id,
+      text: raw.reply_to.deleted_at ? DELETED_PLACEHOLDER : raw.reply_to.text,
+      author: raw.reply_to.author,
+    }
+  }
+
+  return { ...raw, text, reply_to }
+}
 
 // Verify the current member is part of the chat group (or is an admin).
 // Returns null on success; otherwise a 403 Response.
@@ -66,10 +110,19 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 
   const total = count ?? 0
 
-  // Data query (paginated)
+  // Data query (paginated). Join su author + self-join su reply_to per
+  // la citation embedded. Il nested author dentro reply_to serve a colorare
+  // la cornice della citazione col colore del membro citato.
   const { data: messages, error } = await db
     .from('chat_messages')
-    .select('*, author:members(id, name, avatar_emoji, color)')
+    .select(
+      `*,
+       author:members!chat_messages_author_id_fkey(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color),
+       reply_to:chat_messages!chat_messages_reply_to_message_id_fkey(
+         id, text, deleted_at,
+         author:members!chat_messages_author_id_fkey(id, name, color)
+       )`,
+    )
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
     .range(from, to)
@@ -81,7 +134,9 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
     )
   }
 
-  const data = messages ?? []
+  const data = (messages ?? []).map((m) =>
+    shapeMessage(m as ChatMessage & { author: MemberPublic; reply_to?: RawReplyJoin }),
+  )
 
   // Update last_read_at for the current member (best-effort)
   await db
@@ -120,6 +175,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   let messageType: string
   let mediaUrl: string | null
   let text: string
+  let replyToMessageId: string | null = null
 
   if (isMultipart) {
     let formData: FormData
@@ -136,6 +192,8 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
     messageType = (formData.get('message_type') as string | null) ?? 'image'
     text = ((formData.get('text') as string | null) ?? '').trim()
+    const replyRaw = formData.get('reply_to_message_id') as string | null
+    if (replyRaw && replyRaw.length > 0) replyToMessageId = replyRaw
 
     if (messageType !== 'image' && messageType !== 'document') {
       return NextResponse.json({ data: null, error: 'Tipo messaggio non valido' }, { status: 400 })
@@ -150,7 +208,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ data: null, error: message }, { status: 400 })
     }
   } else {
-    let body: { text?: string; message_type?: string; media_url?: string }
+    let body: { text?: string; message_type?: string; media_url?: string; reply_to_message_id?: string | null }
     try {
       body = await req.json()
     } catch {
@@ -160,6 +218,9 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     messageType = body.message_type ?? 'text'
     mediaUrl = body.media_url ?? null
     text = body.text ?? ''
+    if (typeof body.reply_to_message_id === 'string' && body.reply_to_message_id.length > 0) {
+      replyToMessageId = body.reply_to_message_id
+    }
 
     if (messageType === 'text') {
       if (!text || text.trim() === '') {
@@ -180,6 +241,23 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   const forbidden = await ensureMembership(db, groupId, member)
   if (forbidden) return forbidden
 
+  // Validazione reply_to_message_id: se presente deve esistere ed essere
+  // nello STESSO gruppo (impedisce di citare messaggi di altri gruppi
+  // tramite un id pinchato dalla rete).
+  if (replyToMessageId) {
+    const { data: parent } = await db
+      .from('chat_messages')
+      .select('id, group_id')
+      .eq('id', replyToMessageId)
+      .maybeSingle()
+    if (!parent || parent.group_id !== groupId) {
+      return NextResponse.json(
+        { data: null, error: 'Messaggio citato non valido' },
+        { status: 400 },
+      )
+    }
+  }
+
   const { data: message, error } = await db
     .from('chat_messages')
     .insert({
@@ -188,6 +266,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
       text: text.trim(),
       message_type: messageType,
       media_url: mediaUrl,
+      reply_to_message_id: replyToMessageId,
     })
     .select('*')
     .single()
@@ -196,10 +275,17 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ data: null, error: error?.message ?? 'Invio fallito' }, { status: 500 })
   }
 
-  // Fetch with author join
+  // Fetch arricchito (author + reply_to embedded). Stesso shape della GET.
   const { data: enriched } = await db
     .from('chat_messages')
-    .select('*, author:members(id, name, avatar_emoji, color)')
+    .select(
+      `*,
+       author:members!chat_messages_author_id_fkey(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color),
+       reply_to:chat_messages!chat_messages_reply_to_message_id_fkey(
+         id, text, deleted_at,
+         author:members!chat_messages_author_id_fkey(id, name, color)
+       )`,
+    )
     .eq('id', message.id)
     .single()
 
@@ -224,5 +310,9 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     },
   }).catch((err) => console.error('emit chat_message failed:', err))
 
-  return NextResponse.json({ data: enriched ?? message, error: null }, { status: 201 })
+  const shaped = enriched
+    ? shapeMessage(enriched as ChatMessage & { author: MemberPublic; reply_to?: RawReplyJoin })
+    : message
+
+  return NextResponse.json({ data: shaped, error: null }, { status: 201 })
 }

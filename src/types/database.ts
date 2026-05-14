@@ -264,10 +264,32 @@ export type ChatMessage = {
   message_type: 'text' | 'image' | 'document'
   media_url: string | null
   created_at: string
+  /** Messaggio citato in stile WhatsApp. NULL = non è una reply. */
+  reply_to_message_id: string | null
+  /** NULL = mai modificato. Quando settato, la UI mostra "Modificato". */
+  edited_at: string | null
+  /** NULL = non eliminato. Quando settato, il server sostituisce `text`
+   * con "[Messaggio eliminato]" prima di rispondere — la riga resta per
+   * mantenere il contesto delle reply che la citano. */
+  deleted_at: string | null
+}
+
+/** Citazione minima embedded nel messaggio che fa reply. Costruita lato
+ * server con un self-join su chat_messages + author. Vale `null` se
+ * `reply_to_message_id` è NULL o se il messaggio citato è stato
+ * hard-deleted (la FK ON DELETE SET NULL setta reply_to_message_id a NULL
+ * nei messaggi citanti). Se il messaggio citato ha `deleted_at` non-NULL,
+ * `text` qui sotto è già stato sostituito dal server con "[Messaggio
+ * eliminato]". */
+export type ChatMessageReplyRef = {
+  id: string
+  text: string
+  author: { id: string; name: string; color: string }
 }
 
 export type ChatMessageWithAuthor = ChatMessage & {
   author: MemberPublic
+  reply_to: ChatMessageReplyRef | null
 }
 
 export type ChatReadStatus = {
@@ -460,6 +482,11 @@ export type SendMessageInput = {
   text?: string
   message_type?: 'text' | 'image' | 'document'
   media_url?: string
+  reply_to_message_id?: string | null
+}
+
+export type UpdateMessageInput = {
+  text: string
 }
 
 export type LoginInput = {
