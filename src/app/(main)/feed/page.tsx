@@ -7,14 +7,32 @@ import { useAuth } from '@/hooks/useAuth'
 import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { compressImage } from '@/lib/storage'
-import { ReactionEmoji, MemberPublic } from '@/types/database'
+import { ReactionEmoji, MemberPublic, CreatePollInput } from '@/types/database'
+
+const MAX_POLL_OPTIONS = 4
+const MIN_POLL_OPTIONS = 2
+
+function emptyPollOptions(): string[] {
+  return ['', '']
+}
 
 
 export default function FeedPage() {
   const router = useRouter()
   const toast = useToast()
   const { member } = useAuth()
-  const { posts, isLoading, hasMore, loadMore, createPost, toggleLike, toggleReaction, deletePost } = usePosts()
+  const {
+    posts,
+    isLoading,
+    hasMore,
+    loadMore,
+    createPost,
+    toggleLike,
+    toggleReaction,
+    deletePost,
+    votePoll,
+    retractPollVote,
+  } = usePosts()
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [formText, setFormText] = useState('')
@@ -22,6 +40,15 @@ export default function FeedPage() {
   const [formImages, setFormImages] = useState<File[]>()
   const [formPreviews, setFormPreviews] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Poll composer state. `pollEnabled` toggla la sezione sondaggio sotto.
+  // Il sondaggio è opzionale e indipendente da text/images — un post può
+  // avere testo + foto + sondaggio.
+  const [pollEnabled, setPollEnabled] = useState(false)
+  const [pollQuestion, setPollQuestion] = useState('')
+  const [pollOptions, setPollOptions] = useState<string[]>(emptyPollOptions)
+  const [pollMultiChoice, setPollMultiChoice] = useState(false)
+  const [pollClosesAt, setPollClosesAt] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const loadingMore = useRef(false)
@@ -81,26 +108,92 @@ export default function FeedPage() {
     setFormPreviews((prev) => prev.filter((_, i) => i !== idx))
   }
 
+  const resetForm = () => {
+    setFormText('')
+    setFormType('normal')
+    setFormImages(undefined)
+    setFormPreviews([])
+    setPollEnabled(false)
+    setPollQuestion('')
+    setPollOptions(emptyPollOptions())
+    setPollMultiChoice(false)
+    setPollClosesAt('')
+  }
+
+  const buildPollInput = (): CreatePollInput | null => {
+    if (!pollEnabled) return null
+    const question = pollQuestion.trim()
+    const options = pollOptions.map((o) => o.trim()).filter((o) => o.length > 0)
+    if (!question) {
+      toast.error('Scrivi la domanda del sondaggio.')
+      return null
+    }
+    if (options.length < MIN_POLL_OPTIONS) {
+      toast.error(`Servono almeno ${MIN_POLL_OPTIONS} opzioni nel sondaggio.`)
+      return null
+    }
+    const lowered = options.map((o) => o.toLowerCase())
+    if (new Set(lowered).size !== lowered.length) {
+      toast.error('Le opzioni del sondaggio devono essere diverse.')
+      return null
+    }
+    let closes_at: string | null = null
+    if (pollClosesAt) {
+      const t = Date.parse(pollClosesAt)
+      if (Number.isNaN(t) || t <= Date.now()) {
+        toast.error('La data di chiusura deve essere nel futuro.')
+        return null
+      }
+      closes_at = new Date(t).toISOString()
+    }
+    return {
+      question,
+      options,
+      multi_choice: pollMultiChoice,
+      closes_at,
+    }
+  }
+
   const handleSubmit = async () => {
-    if (!formText.trim() && !formImages?.length) return
+    if (!formText.trim() && !formImages?.length && !pollEnabled) return
+    let poll: CreatePollInput | null = null
+    if (pollEnabled) {
+      poll = buildPollInput()
+      if (!poll) return // toast già mostrato in buildPollInput
+    }
     setIsSubmitting(true)
-    const ok = await createPost({ text: formText.trim(), post_type: formType, images: formImages })
+    const ok = await createPost({
+      text: formText.trim(),
+      post_type: formType,
+      images: formImages,
+      poll: poll ?? undefined,
+    })
     setIsSubmitting(false)
     if (ok) {
       setSheetOpen(false)
-      setFormText('')
-      setFormType('normal')
-      setFormImages(undefined)
-      setFormPreviews([])
+      resetForm()
+    } else {
+      toast.error('Non riesco a pubblicare. Riprova.')
     }
   }
 
   const handleClose = () => {
     setSheetOpen(false)
-    setFormText('')
-    setFormType('normal')
-    setFormImages(undefined)
-    setFormPreviews([])
+    resetForm()
+  }
+
+  const handlePollOptionChange = (idx: number, value: string) => {
+    setPollOptions((prev) => prev.map((o, i) => (i === idx ? value : o)))
+  }
+
+  const handleAddPollOption = () => {
+    setPollOptions((prev) => (prev.length < MAX_POLL_OPTIONS ? [...prev, ''] : prev))
+  }
+
+  const handleRemovePollOption = (idx: number) => {
+    setPollOptions((prev) =>
+      prev.length > MIN_POLL_OPTIONS ? prev.filter((_, i) => i !== idx) : prev,
+    )
   }
 
   return (
@@ -140,6 +233,8 @@ export default function FeedPage() {
               }}
               onDelete={deletePost}
               onCommentsClick={(id) => router.push(`/feed/${id}`)}
+              onPollVote={votePoll}
+              onPollRetract={retractPollVote}
             />
           ))
         )}
@@ -243,10 +338,96 @@ export default function FeedPage() {
             Aggiungi foto
           </button>
 
+          {/* Poll toggle + form */}
+          <button
+            onClick={() => setPollEnabled((v) => !v)}
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed text-sm transition-colors ${
+              pollEnabled
+                ? 'border-[#E8A838]/60 text-[#E8A838]'
+                : 'border-white/20 text-white/50 hover:border-[#E8A838]/50 hover:text-[#E8A838]'
+            }`}
+            aria-pressed={pollEnabled}
+            aria-label={pollEnabled ? 'Rimuovi sondaggio' : 'Aggiungi sondaggio'}
+          >
+            <span aria-hidden="true" className="text-base leading-none">📊</span>
+            {pollEnabled ? 'Sondaggio attivo — tocca per rimuovere' : 'Aggiungi sondaggio'}
+          </button>
+
+          {pollEnabled && (
+            <div className="flex flex-col gap-3 p-4 rounded-xl bg-white/5 border border-white/10">
+              <input
+                value={pollQuestion}
+                onChange={(e) => setPollQuestion(e.target.value)}
+                placeholder="Domanda (es. Quando ci vediamo?)"
+                maxLength={200}
+                className="w-full bg-surface-sunken border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/30 text-body focus:outline-none focus:border-[#E8A838]/60"
+              />
+
+              <div className="flex flex-col gap-2">
+                {pollOptions.map((opt, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      value={opt}
+                      onChange={(e) => handlePollOptionChange(idx, e.target.value)}
+                      placeholder={`Opzione ${idx + 1}`}
+                      maxLength={100}
+                      className="flex-1 bg-surface-sunken border border-white/10 rounded-lg px-3 py-2 text-white placeholder-white/30 text-body focus:outline-none focus:border-[#E8A838]/60"
+                    />
+                    {pollOptions.length > MIN_POLL_OPTIONS && (
+                      <button
+                        onClick={() => handleRemovePollOption(idx)}
+                        className="shrink-0 w-9 h-9 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/50 hover:text-red-400 transition-colors flex items-center justify-center"
+                        aria-label={`Rimuovi opzione ${idx + 1}`}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {pollOptions.length < MAX_POLL_OPTIONS && (
+                <button
+                  onClick={handleAddPollOption}
+                  className="self-start flex items-center gap-1.5 text-sm text-[#E8A838] hover:text-[#E8A838]/80 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Aggiungi opzione
+                </button>
+              )}
+
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={pollMultiChoice}
+                  onChange={(e) => setPollMultiChoice(e.target.checked)}
+                  className="w-4 h-4 accent-[#E8A838]"
+                />
+                <span className="text-sm text-white/80">Permetti di scegliere più opzioni</span>
+              </label>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-caption text-white/50">
+                  Chiude il (lascia vuoto per sempre aperto)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={pollClosesAt}
+                  onChange={(e) => setPollClosesAt(e.target.value)}
+                  className="w-full bg-surface-sunken border border-white/10 rounded-lg px-3 py-2 text-white text-body focus:outline-none focus:border-[#E8A838]/60"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Submit */}
           <Button
             onClick={handleSubmit}
-            disabled={!formText.trim() && !formImages?.length}
+            disabled={!formText.trim() && !formImages?.length && !pollEnabled}
             loading={isSubmitting}
             fullWidth
           >

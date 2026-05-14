@@ -1,6 +1,6 @@
 'use client'
 
-import { supabase } from './supabase/client'
+import { getSupabase } from './supabase/browser'
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { useEffect, useRef } from 'react'
 
@@ -23,6 +23,7 @@ export function useRealtimeSubscription<T>(
   useEffect(() => {
     if (!enabled) return
 
+    const supabase = getSupabase()
     const channelName = `${table}_${filter || 'all'}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
     const config: {

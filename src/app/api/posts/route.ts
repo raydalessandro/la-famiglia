@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase/client'
 import { uploadImage } from '@/lib/storage'
 import { buildPostWithDetails } from '@/lib/posts'
 import { emit } from '@/lib/notification-events'
+import type { CreatePollInput } from '@/types/database'
 
 // GET /api/posts?page=1&per_page=10&author_id=xxx → PaginatedResponse<PostWithDetails>
 export async function GET(req: NextRequest) {
@@ -68,7 +69,12 @@ export async function GET(req: NextRequest) {
   })
 }
 
-// POST /api/posts (FormData: text, post_type, images[]) → 201 ApiResponse<PostWithDetails>
+// POST /api/posts (FormData: text, post_type, images[], poll?) → 201 ApiResponse<PostWithDetails>
+//
+// Campo `poll` opzionale come JSON string:
+//   { question: string, options: string[], multi_choice?: boolean, closes_at?: ISO string }
+// Validazione: question 1-200 char, 2-4 opzioni non vuote (max 100 char ciascuna),
+// closes_at se presente deve essere nel futuro.
 export async function POST(req: NextRequest) {
   const member = await requireAuth()
 
@@ -83,15 +89,31 @@ export async function POST(req: NextRequest) {
 
   const text = (formData.get('text') as string | null)?.trim() ?? ''
   const post_type = (formData.get('post_type') as string | null) ?? 'normal'
-  const imageFiles = formData.getAll('images') as File[]
+  const imageFiles = (formData.getAll('images') as File[]).filter((f) => f && f.size > 0)
+  const pollRaw = formData.get('poll') as string | null
 
-  if (!text) {
-    return NextResponse.json({ data: null, error: 'Il testo è obbligatorio' }, { status: 400 })
+  // Almeno uno tra testo / foto / sondaggio deve essere presente: la
+  // `question` del sondaggio fa da contenuto del post quando il testo è
+  // vuoto (caso "WhatsApp-style": Quando ci vediamo? — Sabato / Domenica).
+  if (!text && imageFiles.length === 0 && !pollRaw) {
+    return NextResponse.json(
+      { data: null, error: 'Aggiungi un testo, una foto o un sondaggio' },
+      { status: 400 },
+    )
   }
 
   const validPostTypes = ['normal', 'recipe', 'story']
   if (!validPostTypes.includes(post_type)) {
     return NextResponse.json({ data: null, error: 'Tipo post non valido' }, { status: 400 })
+  }
+
+  let pollInput: CreatePollInput | null = null
+  if (pollRaw) {
+    const parsed = parsePollInput(pollRaw)
+    if ('error' in parsed) {
+      return NextResponse.json({ data: null, error: parsed.error }, { status: 400 })
+    }
+    pollInput = parsed.value
   }
 
   const db = createServerClient()
@@ -130,6 +152,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Insert poll + options (best-effort: se fallisce il post resta senza sondaggio)
+  if (pollInput) {
+    const { data: poll, error: pollError } = await db
+      .from('post_polls')
+      .insert({
+        post_id: post.id,
+        question: pollInput.question,
+        multi_choice: pollInput.multi_choice ?? false,
+        closes_at: pollInput.closes_at ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (pollError || !poll) {
+      console.error(`Error creating poll for post ${post.id}:`, pollError)
+    } else {
+      const optionRows = pollInput.options.map((label, index) => ({
+        poll_id: poll.id,
+        label,
+        sort_order: index,
+      }))
+      const { error: optionsError } = await db.from('post_poll_options').insert(optionRows)
+      if (optionsError) {
+        console.error(`Error creating poll options for post ${post.id}:`, optionsError)
+      }
+    }
+  }
+
   const postWithDetails = await buildPostWithDetails(post, member)
 
   // Notifica tutta la famiglia del nuovo post (l'autore viene escluso
@@ -140,4 +190,54 @@ export async function POST(req: NextRequest) {
   }).catch((err) => console.error('emit new_post failed:', err))
 
   return NextResponse.json({ data: postWithDetails, error: null }, { status: 201 })
+}
+
+type PollParseResult = { value: CreatePollInput } | { error: string }
+
+function parsePollInput(raw: string): PollParseResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { error: 'Sondaggio non valido' }
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return { error: 'Sondaggio non valido' }
+  }
+
+  const obj = parsed as Record<string, unknown>
+  const question = typeof obj.question === 'string' ? obj.question.trim() : ''
+  if (!question) return { error: 'La domanda del sondaggio è obbligatoria' }
+  if (question.length > 200) return { error: 'La domanda è troppo lunga (max 200 caratteri)' }
+
+  if (!Array.isArray(obj.options)) {
+    return { error: 'Le opzioni del sondaggio sono obbligatorie' }
+  }
+
+  const options = obj.options
+    .map((o) => (typeof o === 'string' ? o.trim() : ''))
+    .filter((o) => o.length > 0)
+
+  if (options.length < 2) return { error: 'Servono almeno 2 opzioni' }
+  if (options.length > 4) return { error: 'Massimo 4 opzioni' }
+  if (options.some((o) => o.length > 100)) {
+    return { error: 'Ogni opzione può avere al massimo 100 caratteri' }
+  }
+  const lowered = options.map((o) => o.toLowerCase())
+  if (new Set(lowered).size !== lowered.length) {
+    return { error: 'Le opzioni devono essere diverse tra loro' }
+  }
+
+  const multi_choice = obj.multi_choice === true
+
+  let closes_at: string | null = null
+  if (typeof obj.closes_at === 'string' && obj.closes_at.length > 0) {
+    const t = Date.parse(obj.closes_at)
+    if (Number.isNaN(t)) return { error: 'Data di chiusura non valida' }
+    if (t <= Date.now()) return { error: 'La chiusura deve essere nel futuro' }
+    closes_at = new Date(t).toISOString()
+  }
+
+  return { value: { question, options, multi_choice, closes_at } }
 }

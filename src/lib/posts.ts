@@ -1,6 +1,12 @@
 import { toPublicMember } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
-import { Member, PostWithDetails, PostReactionWithMember } from '@/types/database'
+import {
+  Member,
+  PostWithDetails,
+  PostReactionWithMember,
+  PostPollOption,
+  PostPollWithResults,
+} from '@/types/database'
 
 /**
  * Build the full {@link PostWithDetails} payload for a single post row.
@@ -8,7 +14,7 @@ import { Member, PostWithDetails, PostReactionWithMember } from '@/types/databas
  * create-post endpoint so they all return the exact same shape.
  *
  * The `member` argument is the current authenticated user — used to set
- * `liked_by_me` so the client doesn't have to do a second pass.
+ * `liked_by_me` and `voted_by_me` so the client doesn't have to do a second pass.
  */
 export async function buildPostWithDetails(
   post: {
@@ -23,12 +29,24 @@ export async function buildPostWithDetails(
 ): Promise<PostWithDetails> {
   const db = createServerClient()
 
-  const [authorResult, imagesResult, likesResult, commentsResult, reactionsResult] = await Promise.all([
+  const [
+    authorResult,
+    imagesResult,
+    likesResult,
+    commentsResult,
+    reactionsResult,
+    pollResult,
+  ] = await Promise.all([
     db.from('members').select('*').eq('id', post.author_id).single(),
     db.from('post_images').select('*').eq('post_id', post.id).order('sort_order', { ascending: true }),
     db.from('post_likes').select('*').eq('post_id', post.id),
     db.from('post_comments').select('*', { count: 'exact', head: true }).eq('post_id', post.id),
     db.from('post_reactions').select('*, members(*)').eq('post_id', post.id),
+    db
+      .from('post_polls')
+      .select('*, options:post_poll_options(*), votes:post_poll_votes(option_id, member_id)')
+      .eq('post_id', post.id)
+      .maybeSingle(),
   ])
 
   const author = authorResult.data ? toPublicMember(authorResult.data as unknown as Member) : null
@@ -44,6 +62,8 @@ export async function buildPostWithDetails(
     }
   })
 
+  const poll = buildPoll(pollResult.data, member.id)
+
   return {
     ...post,
     post_type: post.post_type as 'normal' | 'recipe' | 'story',
@@ -53,5 +73,46 @@ export async function buildPostWithDetails(
     comments_count,
     liked_by_me: likes.some((l) => l.member_id === member.id),
     reactions,
+    poll,
+  }
+}
+
+type RawPoll = {
+  id: string
+  post_id: string
+  question: string
+  multi_choice: boolean
+  closes_at: string | null
+  created_at: string
+  options: PostPollOption[] | null
+  votes: { option_id: string; member_id: string }[] | null
+}
+
+function buildPoll(raw: RawPoll | null, memberId: string): PostPollWithResults | null {
+  if (!raw) return null
+
+  const votes = raw.votes ?? []
+  const optionsWithResults = (raw.options ?? [])
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((opt) => {
+      const votesForOption = votes.filter((v) => v.option_id === opt.id)
+      return {
+        ...opt,
+        vote_count: votesForOption.length,
+        voted_by_me: votesForOption.some((v) => v.member_id === memberId),
+      }
+    })
+
+  return {
+    id: raw.id,
+    post_id: raw.post_id,
+    question: raw.question,
+    multi_choice: raw.multi_choice,
+    closes_at: raw.closes_at,
+    created_at: raw.created_at,
+    options: optionsWithResults,
+    total_votes: votes.length,
+    is_closed: raw.closes_at !== null && new Date(raw.closes_at).getTime() < Date.now(),
   }
 }

@@ -33,6 +33,8 @@ type UsePostsReturn = {
   ) => Promise<void>
   addComment: (postId: string, text: string) => Promise<boolean>
   deletePost: (postId: string) => Promise<boolean>
+  votePoll: (postId: string, optionId: string) => Promise<void>
+  retractPollVote: (postId: string, optionId?: string | null) => Promise<void>
   refetch: () => Promise<void>
 }
 
@@ -74,6 +76,7 @@ export function usePosts(authorId?: string): UsePostsReturn {
 
   useRealtimeSubscription('posts', () => fetchPosts(), undefined, true)
   useRealtimeSubscription('post_reactions', () => fetchPosts(), undefined, true)
+  useRealtimeSubscription('post_poll_votes', () => fetchPosts(), undefined, true)
 
   const loadMore = useCallback(async () => {
     const nextPage = page + 1
@@ -91,7 +94,7 @@ export function usePosts(authorId?: string): UsePostsReturn {
 
   const createPost = useCallback(async (input: CreatePostInput): Promise<boolean> => {
     const offline = !navigator.onLine
-    if (offline && input.images?.length) return false
+    if (offline && (input.images?.length || input.poll)) return false
     if (offline) {
       await enqueueOperation('create_post', { text: input.text, post_type: input.post_type ?? 'normal' })
       return true
@@ -101,6 +104,7 @@ export function usePosts(authorId?: string): UsePostsReturn {
       formData.append('text', input.text)
       if (input.post_type) formData.append('post_type', input.post_type)
       input.images?.forEach((img) => formData.append('images', img))
+      if (input.poll) formData.append('poll', JSON.stringify(input.poll))
       const res = await fetch('/api/posts', { method: 'POST', body: formData })
       return res.ok
     } catch {
@@ -220,6 +224,33 @@ export function usePosts(authorId?: string): UsePostsReturn {
     }
   }, [])
 
+  const votePoll = useCallback(async (postId: string, optionId: string): Promise<void> => {
+    try {
+      const res = await fetch(`/api/posts/${postId}/poll/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ option_id: optionId }),
+      })
+      if (!res.ok) throw new Error('Vote failed')
+      fetchPosts()
+    } catch {
+      fetchPosts()
+    }
+  }, [fetchPosts])
+
+  const retractPollVote = useCallback(async (postId: string, optionId?: string | null): Promise<void> => {
+    try {
+      const url = optionId
+        ? `/api/posts/${postId}/poll/vote?option_id=${encodeURIComponent(optionId)}`
+        : `/api/posts/${postId}/poll/vote`
+      const res = await fetch(url, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Retract failed')
+      fetchPosts()
+    } catch {
+      fetchPosts()
+    }
+  }, [fetchPosts])
+
   const deletePost = useCallback(async (postId: string): Promise<boolean> => {
     try {
       const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' })
@@ -245,6 +276,8 @@ export function usePosts(authorId?: string): UsePostsReturn {
     toggleReaction,
     addComment,
     deletePost,
+    votePoll,
+    retractPollVote,
     refetch: fetchPosts,
   }
 }

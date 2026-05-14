@@ -8,6 +8,92 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-14 — Sondaggi nei post (Fase 6.1)
+
+**Why**: sblocca decisioni di famiglia coordinate ("Quando ci vediamo?
+— Sabato / Domenica / Liberi"). Prima feature di prodotto richiesta
+esplicitamente come "WhatsApp/Instagram-like". Allegata a un post
+normale, niente modulo a sé.
+
+**What to apply on production**
+
+```sh
+supabase db push
+```
+
+Applica `supabase/migrations/009_post_polls.sql` — tre nuove tabelle:
+- `post_polls` — sondaggio per post (1:1 con `posts.id`, UNIQUE)
+- `post_poll_options` — 2-4 opzioni per sondaggio, ordinate via `sort_order`
+- `post_poll_votes` — voti per opzione, UNIQUE(poll, option, member) per
+  impedire doppio voto sulla stessa opzione
+
+RLS difensive: SELECT pubblico per anon/authenticated (necessario per
+Realtime), mutazioni solo via service_role attraverso le API. Realtime
+opt-in: tutte e tre le tabelle in `supabase_realtime` con
+`REPLICA IDENTITY FULL`, guardate da `pg_publication_tables` per
+idempotenza (vedi pattern già usato in 007).
+
+**Già applicata sul progetto remoto `la-famiglia` il 2026-05-14** via
+`supabase db push` (linked). Niente reset password DB richiesto: il link
+funziona con il solo access token CLI; `db push` ha applicato la 009 senza
+chiedere credenziali aggiuntive perché era l'unica pendente.
+
+**Modello di voto**:
+- `multi_choice = false` (default) → tap su un'opzione sostituisce il voto
+  precedente del membro su quel sondaggio (l'endpoint cancella i voti
+  precedenti del membro e inserisce il nuovo, atomicamente sul lato
+  applicativo). Idempotente se si rivota la stessa opzione.
+- `multi_choice = true` → ogni opzione è un voto indipendente, toggla.
+- `closes_at` non-null e nel passato → endpoint vote restituisce 403.
+  La UI mostra il sondaggio in modalità lettura.
+
+**Side effect su dati esistenti**: nessuno. Le tre tabelle sono nuove,
+nessun backfill, nessuna migration di righe.
+
+**API aggiunte**
+
+- `POST /api/posts` ora accetta `poll` opzionale nel FormData (JSON
+  string: `{ question, options[], multi_choice?, closes_at? }`). Validazione
+  server-side: question 1-200 char, 2-4 opzioni non vuote di max 100 char,
+  niente duplicati, `closes_at` se presente deve essere nel futuro.
+- `POST /api/posts/:id/poll/vote { option_id }` — vota / cambia voto,
+  201 created o 200 idempotente.
+- `DELETE /api/posts/:id/poll/vote?option_id=...` — ritira voto. Se
+  `option_id` assente rimuove tutti i voti del membro per il sondaggio
+  (utile in single-choice quando si toglie il voto attivo).
+
+**Bugfix collaterale al gate del POST `/api/posts`**: il server prima
+rifiutava qualsiasi POST con `text` vuoto. Il client invece accettava
+post con solo foto o solo sondaggio. Allineato il server: ora un post è
+valido se ha **almeno uno** tra testo, foto o sondaggio. Sblocca il
+caso "post sondaggio-only" (la `question` fa da contenuto).
+
+**UI**
+
+- `<Poll>` (`src/components/feed/Poll.tsx`) — barre proporzionali, %,
+  tap per votare/cambiare. Accessibilità: `aria-pressed`, `aria-label`
+  parlanti, `min-h-touch` (44px) per ogni opzione. Stato closed = barre
+  visibili, tap disabilitato.
+- Composer in `/feed` — toggle "📊 Aggiungi sondaggio" → form con domanda
+  + 2-4 opzioni dinamiche, checkbox multi-choice, datetime-local opzionale
+  per chiusura.
+- Realtime su `post_poll_votes` (in `usePosts`) — quando un membro vota,
+  le barre nel feed degli altri si aggiornano live senza refresh.
+
+**Come testare**
+
+1. Crea un post con solo sondaggio (text vuoto + toggle sondaggio
+   attivo + domanda + 2 opzioni). Deve pubblicarsi.
+2. Vota da un device, apri lo stesso feed in incognito con un altro
+   membro: la barra si aggiorna live.
+3. Cambia voto in single-choice → il vecchio voto sparisce dal count.
+4. Crea un sondaggio multi-choice → puoi votare più opzioni dallo stesso
+   membro.
+5. Crea un sondaggio con `closes_at` 1 minuto nel futuro → dopo che è
+   scaduto, tap sulle opzioni non fa nulla, endpoint torna 403.
+
+---
+
 ## 2026-05-11 — Conferma attività aperta a tutti i membri
 
 **Why**: il design originale ammetteva la conferma presenza solo per i

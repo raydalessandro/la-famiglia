@@ -56,7 +56,7 @@ da un device iOS, **prima cosa** chiedi all'utente di aprire il sito
 con `?debug=1`, fare uno screenshot della console + del tab Network e
 mandartelo. Risparmia ore di tentativi alla cieca.
 
-## Stato attuale (aggiornato 2026-05-11)
+## Stato attuale (aggiornato 2026-05-14)
 
 L'app è in produzione su Vercel. Funziona su iOS Safari, Android Chrome,
 Samsung Internet e desktop. Testata sui device della famiglia.
@@ -85,9 +85,21 @@ Samsung Internet e desktop. Testata sui device della famiglia.
     la presenza a qualsiasi attività, non solo i `participant_ids`
     pre-selezionati alla creazione. `activity_participants` resta come
     metadata informativo (chi riceve la push), non come gate d'accesso.
+- **Fase 6.1** — Sondaggi nei post:
+  - Tre tabelle (`post_polls`, `post_poll_options`, `post_poll_votes`,
+    migration `009_post_polls.sql`), modello single/multi-choice con
+    `closes_at` opzionale.
+  - `<Poll>` in `src/components/feed/Poll.tsx` con barre proporzionali +
+    accessibility (aria-pressed, min-h-touch). Composer in `/feed` con
+    toggle "📊 Aggiungi sondaggio" e 2-4 opzioni dinamiche.
+  - Realtime su `post_poll_votes` in `usePosts` — barre aggiornate live
+    per gli altri membri.
+  - Bugfix collaterale: `POST /api/posts` accetta ora post con solo
+    foto o solo sondaggio (prima richiedeva sempre testo non vuoto).
+  - Vedi PRODUCTION_CHANGELOG.md 2026-05-14 per dettagli ops.
 
 **Cosa NON è ancora stato fatto e dove sta**: vedi sezione **Fase 6**
-sotto.
+sotto (6.2–6.6).
 
 ## Convenzioni — leggi PRIMA di scrivere codice
 
@@ -274,106 +286,6 @@ per volta. Ognuna è atomica: può essere fatta da sola.
 
 Per ogni voce: cosa fare, perché serve, SQL pronto, API da aggiungere,
 UI da costruire, stima impatto.
-
----
-
-## 6.1 — Sondaggi nei post (priorità: alta)
-
-**Cosa**. Aggiungere un sondaggio inline a un post normale ("Quando volete
-venire a cena? — Sabato / Domenica / Liberi"). Ogni membro vota, il
-risultato è visibile in tempo reale con barre proporzionali.
-
-**Perché**. È la prima cosa che l'utente ha chiesto come feature
-"WhatsApp/Instagram-like". Sblocca decisioni di famiglia coordinate (cene,
-gite, regali di compleanno).
-
-**Schema SQL** (nuovo file `009_post_polls.sql`):
-
-```sql
--- ═══ POST POLLS — inline polls attached to a post ═══
--- Un post può avere zero o un sondaggio. Le opzioni sono righe
--- separate (pattern relazionale standard). Ogni membro vota UNA
--- opzione per sondaggio; cambiando voto sostituisce il precedente.
-
-CREATE TABLE IF NOT EXISTS post_polls (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id      UUID REFERENCES posts(id) ON DELETE CASCADE NOT NULL UNIQUE,
-  question     TEXT NOT NULL,
-  multi_choice BOOLEAN DEFAULT false,  -- true = più opzioni votabili (futuro)
-  closes_at    TIMESTAMPTZ,            -- opzionale, NULL = sempre aperto
-  created_at   TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS post_poll_options (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  poll_id      UUID REFERENCES post_polls(id) ON DELETE CASCADE NOT NULL,
-  label        TEXT NOT NULL,
-  sort_order   INTEGER DEFAULT 0,
-  created_at   TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS post_poll_votes (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  poll_id      UUID REFERENCES post_polls(id) ON DELETE CASCADE NOT NULL,
-  option_id    UUID REFERENCES post_poll_options(id) ON DELETE CASCADE NOT NULL,
-  member_id    UUID REFERENCES members(id) ON DELETE CASCADE NOT NULL,
-  created_at   TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(poll_id, member_id)  -- un voto per sondaggio per membro
-);
-
-CREATE INDEX IF NOT EXISTS idx_post_poll_options_poll
-  ON post_poll_options(poll_id, sort_order);
-CREATE INDEX IF NOT EXISTS idx_post_poll_votes_poll
-  ON post_poll_votes(poll_id);
-CREATE INDEX IF NOT EXISTS idx_post_poll_votes_member
-  ON post_poll_votes(member_id);
-
--- RLS difensive: anon legge (per realtime), service_role mutates via API.
-ALTER TABLE post_polls ENABLE ROW LEVEL SECURITY;
-ALTER TABLE post_poll_options ENABLE ROW LEVEL SECURITY;
-ALTER TABLE post_poll_votes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "rls_defensive_select" ON post_polls FOR SELECT TO anon, authenticated USING (true);
-CREATE POLICY "rls_defensive_select" ON post_poll_options FOR SELECT TO anon, authenticated USING (true);
-CREATE POLICY "rls_defensive_select" ON post_poll_votes FOR SELECT TO anon, authenticated USING (true);
-
--- Realtime: i voti aggiornano la UI degli altri membri.
-ALTER TABLE post_polls REPLICA IDENTITY FULL;
-ALTER TABLE post_poll_options REPLICA IDENTITY FULL;
-ALTER TABLE post_poll_votes REPLICA IDENTITY FULL;
-ALTER PUBLICATION supabase_realtime ADD TABLE post_polls;
-ALTER PUBLICATION supabase_realtime ADD TABLE post_poll_options;
-ALTER PUBLICATION supabase_realtime ADD TABLE post_poll_votes;
-```
-
-**API da aggiungere**.
-- `POST /api/posts` — accetta `poll: { question, options[] }` opzionale
-  nel FormData per allegare un sondaggio alla creazione del post
-- `GET /api/posts/:id` — include il sondaggio + opzioni + counts nel
-  `PostWithDetails` (estendere `buildPostWithDetails` in `src/lib/posts.ts`)
-- `POST /api/posts/:id/poll/vote { option_id }` — vota / cambia voto
-- `DELETE /api/posts/:id/poll/vote` — ritira voto
-
-**Tipi nuovi** in `src/types/database.ts`:
-```ts
-type PostPoll = { id, post_id, question, multi_choice, closes_at, created_at }
-type PostPollOption = { id, poll_id, label, sort_order, created_at }
-type PostPollWithResults = PostPoll & {
-  options: (PostPollOption & { vote_count: number; voted_by_me: boolean })[]
-  total_votes: number
-}
-type PostWithDetails = ... & { poll: PostPollWithResults | null }
-```
-
-**UI**.
-- `<Poll>` in `src/components/feed/Poll.tsx` — barre proporzionali, %, tap
-  per votare/cambiare. Pattern Instagram Stories.
-- `<PostComposer>` (bottom sheet in `/feed/page.tsx`) — toggle "Aggiungi
-  sondaggio" → form con domanda + 2-4 opzioni.
-- Realtime su `post_poll_votes` — quando un altro membro vota, le barre
-  si aggiornano live.
-
-**Stima**: 1 sessione (~3h). Tre tabelle nuove ma il pattern segue
-`post_reactions` quasi 1:1.
 
 ---
 
