@@ -55,9 +55,8 @@ export const FAMILY_APPS: FamilyApp[] = [
   {
     id: 'moto-ride',
     name: 'Moto Ride',
-    description: 'Diario delle uscite in moto',
-    // TODO: aggiungere URL deploy quando l'app va live.
-    url: null,
+    description: 'Tracciamento viaggi in moto',
+    url: 'https://moto-lollo-ikn4.vercel.app',
     logoSrc: '/apps/moto-ride.png',
     accent: '#f97316',
   },
