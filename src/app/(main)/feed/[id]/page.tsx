@@ -178,6 +178,20 @@ export default function PostPage() {
     [post, member, fetchPost],
   )
 
+  const handleBookmark = useCallback(
+    async (id: string) => {
+      if (!post) return
+      const wasBookmarked = post.bookmarked_by_me
+      setPost({ ...post, bookmarked_by_me: !wasBookmarked })
+      try {
+        await fetch(`/api/posts/${id}/bookmark`, { method: 'POST' })
+      } catch {
+        setPost({ ...post, bookmarked_by_me: wasBookmarked })
+      }
+    },
+    [post],
+  )
+
   const handleReact = useCallback(
     async (id: string, emoji: ReactionEmoji) => {
       if (!post || !member) return
@@ -241,6 +255,7 @@ export default function PostPage() {
                 post={post}
                 currentMemberId={member?.id}
                 onLike={handleLike}
+                onBookmark={handleBookmark}
                 onReact={handleReact}
                 onDelete={handleDelete}
                 // No onCommentsClick: we're already here.

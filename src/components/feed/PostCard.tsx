@@ -43,6 +43,7 @@ export function PostCard({
   post,
   currentMemberId,
   onLike,
+  onBookmark,
   onReact,
   onDelete,
   onCommentsClick,
@@ -52,6 +53,9 @@ export function PostCard({
   post: PostWithDetails
   currentMemberId: string | undefined
   onLike: (id: string) => void
+  // Opzionale per non rompere i caller esistenti che non l'hanno wired
+  // (es. test). Se assente, l'icona bookmark non viene mostrata.
+  onBookmark?: (id: string) => void
   onReact: (id: string, emoji: ReactionEmoji) => void
   onDelete: (id: string) => void
   onCommentsClick?: (id: string) => void
@@ -202,7 +206,33 @@ export function PostCard({
         ) : (
           <div className="flex items-center gap-1.5 text-white/40">{commentsButton}</div>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          {/* Bookmark privato — visibile solo se il caller ha wired l'handler.
+           * Oro tenue quando attivo per coerenza con l'accento del tema.
+           * Niente conteggio: i bookmark sono privati, nessun altro sa
+           * quanti membri hanno salvato un post. */}
+          {onBookmark && (
+            <button
+              type="button"
+              onClick={() => onBookmark(post.id)}
+              className="flex h-9 w-9 items-center justify-center rounded-full transition-all active:scale-90"
+              aria-label={post.bookmarked_by_me ? 'Rimuovi dai salvati' : 'Salva post'}
+              aria-pressed={post.bookmarked_by_me}
+            >
+              <svg
+                className={`h-5 w-5 transition-colors ${
+                  post.bookmarked_by_me
+                    ? 'text-[#E8A838] fill-[#E8A838]'
+                    : 'text-white/40 fill-none hover:text-[#E8A838]'
+                }`}
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z" />
+              </svg>
+            </button>
+          )}
           <ReactionBar
             postId={post.id}
             reactions={post.reactions}
