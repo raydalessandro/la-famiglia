@@ -23,17 +23,41 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ data: null, error: 'Evento non trovato' }, { status: 404 })
   }
 
-  const { data: participants } = await db
+  const { data: rows } = await db
     .from('event_participants')
-    .select('member_id, members(id, name, avatar_emoji, color)')
+    .select('id, event_id, member_id, status, modified_notes, created_at, updated_at, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
     .eq('event_id', id)
 
-  return NextResponse.json({ data: { ...event, participants: participants ?? [] }, error: null })
+  const list = rows ?? []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const participants = list.map((r: any) => r.members).filter(Boolean)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const attendances = list.map((r: any) => ({
+    id: r.id,
+    event_id: r.event_id,
+    member_id: r.member_id,
+    status: r.status,
+    modified_notes: r.modified_notes,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    member: r.members,
+  }))
+
+  return NextResponse.json({ data: { ...event, participants, attendances }, error: null })
 }
 
 // PATCH /api/events/:id → ApiResponse<Event>
-// Body: { title?, event_date?, description?, location?, participant_ids? }
+// Body: { title?, event_date?, description?, location? }
 // Authorization: only creator or admin can update.
+//
+// Nota: `participant_ids` non è più gestito qui. Dalla migration 015
+// `event_participants` è la tabella delle RISPOSTE (status), non un
+// roster. Cancellare e re-inserire participant_ids su PATCH come
+// faceva l'implementazione precedente sarebbe distruttivo: eliminerebbe
+// tutti gli `status='confirmed'/'skipped'/'modified'` già dichiarati
+// dagli utenti. Se il body include `participant_ids` lo ignoriamo
+// silenziosamente (back-compat con i client vecchi). Le risposte
+// presenza vivono in `POST/DELETE /api/events/:id/attendance`.
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
   const member = await requireAuth()
 
@@ -46,6 +70,8 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     event_date?: string
     description?: string
     location?: string
+    // Accettato e ignorato — vedi nota sopra. Non rimosso dal type per
+    // non rompere i client vecchi che lo mandano ancora.
     participant_ids?: string[]
   }
   try {
@@ -54,7 +80,8 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ data: null, error: 'Body non valido' }, { status: 400 })
   }
 
-  const { participant_ids, ...fields } = body
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { participant_ids: _ignoredParticipantIds, ...fields } = body
 
   const db = createServerClient()
 
@@ -105,21 +132,29 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     event = existing
   }
 
-  if (participant_ids !== undefined) {
-    await db.from('event_participants').delete().eq('event_id', id)
-    if (participant_ids.length > 0) {
-      await db.from('event_participants').insert(
-        participant_ids.map((mid) => ({ event_id: id, member_id: mid }))
-      )
-    }
-  }
+  // participant_ids INTENZIONALMENTE NON gestito qui (vedi nota sopra).
 
-  const { data: participants } = await db
+  const { data: rows } = await db
     .from('event_participants')
-    .select('member_id, members(id, name, avatar_emoji, color)')
+    .select('id, event_id, member_id, status, modified_notes, created_at, updated_at, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
     .eq('event_id', id)
 
-  return NextResponse.json({ data: { ...event, participants: participants ?? [] }, error: null })
+  const list = rows ?? []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const participants = list.map((r: any) => r.members).filter(Boolean)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const attendances = list.map((r: any) => ({
+    id: r.id,
+    event_id: r.event_id,
+    member_id: r.member_id,
+    status: r.status,
+    modified_notes: r.modified_notes,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    member: r.members,
+  }))
+
+  return NextResponse.json({ data: { ...event, participants, attendances }, error: null })
 }
 
 // DELETE /api/events/:id → ApiResponse<null>

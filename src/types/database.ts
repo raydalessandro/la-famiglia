@@ -240,6 +240,33 @@ export type CalendarEvent = {
 
 export type CalendarEventWithDetails = CalendarEvent & {
   participants: MemberPublic[]
+  attendances?: EventAttendanceWithMember[]
+}
+
+// Una risposta di presenza per un evento one-off. Stesso modello di
+// ActivityAttendance ma senza `week_start` (gli eventi non si ripetono).
+// La tabella DB e` `event_participants`: storicamente era un roster
+// (riga = "membro associato all'evento"), dalla migration 015 ha anche
+// status/modified_notes e funge da tabella delle risposte presenza.
+// Le righe pre-015 hanno status=NULL = "associato ma non ha ancora
+// risposto"; le risposte future fanno UPSERT su (event_id, member_id).
+export type EventAttendance = {
+  id: string
+  event_id: string
+  member_id: string
+  status: AttendanceStatus | null
+  modified_notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type EventAttendanceWithMember = EventAttendance & {
+  member: MemberPublic
+}
+
+export type SetEventAttendanceInput = {
+  status: AttendanceStatus
+  modified_notes?: string
 }
 
 export type Task = {
