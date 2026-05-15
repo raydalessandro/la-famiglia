@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { PostWithDetails, ReactionEmoji } from '@/types/database'
-import { Avatar, ReactionBar, MemberLink, ImageLightbox, MentionText } from '@/components/ui'
+import { PostWithDetails, ReactionEmoji, REACTION_EMOJIS } from '@/types/database'
+import { Avatar, MemberLink, ImageLightbox, MentionText } from '@/components/ui'
 import { Poll } from './Poll'
 import type { MemberPublic } from '@/types/database'
 
@@ -19,21 +19,23 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 /**
- * Card di un singolo post nello stile minimal Instagram-like. Niente
- * border / background / rounded esterno: i post nel feed sono separati
- * solo dal gap del wrapper. Immagini full-bleed via -mx-4 (override del
- * padding del wrapper feed). Icone footer thin-stroke (1.5) senza count
- * inline — i numeri vivono in una riga subdued sotto le azioni
- * (pattern Instagram: "12 mi piace · Vedi 5 commenti").
+ * Card di un singolo post nello stile "lettera manoscritta / diario vintage".
  *
- * Usata sia nella lista feed sia nella pagina post singolo: gli action
- * handler (like, react, delete) e onCommentsClick sono iniettati dal
- * caller in modo che lo stesso componente serva entrambi i contesti.
+ * Visual language:
+ * - NESSUN bordo, nessuna card. Lo sfondo carta della pagina E` il foglio.
+ * - Nome autore in italica calligrafica (Cormorant/EB Garamond) ~22px,
+ *   peso visivo da solo anche su post text-only.
+ * - Timestamp in serif italic piccolo seppia chiaro.
+ * - Body post in serif libro 17px.
+ * - Foto montate come polaroid: cornice bianca 10px, ombra morbida, rotazione
+ *   subliminale ≤1deg.
+ * - Azioni come parole (NON icone): "12 cuori", "5 risposte", "salva".
+ * - Reactions: chip di testo seppia/oro discrete, niente bottoni-emoji-pillola.
  *
- * - Nel feed (lista): onCommentsClick naviga a /feed/[id].
- * - Nella pagina post singolo: onCommentsClick può essere undefined
- *   e il contatore commenti diventa decorativo (i commenti sono già
- *   visibili sotto).
+ * Usata sia nella lista feed sia nella pagina post singolo. La pagina /feed
+ * inserisce un ornamento ✻ tra un PostCard e l'altro (vedi feed/page.tsx);
+ * la card di per se` non disegna il proprio divider — e` responsabilita`
+ * del layout chi conosce la sequenza.
  */
 export function PostCard({
   post,
@@ -65,12 +67,24 @@ export function PostCard({
   const likeCount = post.likes.length
   const commentCount = post.comments_count
 
+  // Rotazioni "polaroid" stabili per post — deterministic dall'id, cosi`
+  // ogni post ha sempre la stessa inclinazione (non danza tra render) e
+  // l'effetto resta sublime, sotto la soglia di percezione consapevole.
+  const polaroidTilt = (idx: number) => {
+    // hash semplice id+idx → -0.8..+0.8 deg
+    const s = `${post.id}-${idx}`
+    let h = 0
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+    const v = ((h % 16) - 8) / 10 // -0.8 .. 0.7
+    return v
+  }
+
   return (
-    <article>
-      {/* Header del post. Padding orizzontale 0 perche` il wrapper del
-          feed da gia px-4. Avatar `ringed` col color del membro: e` la
-          firma di colour-per-member del progetto, NON template feel. */}
-      <div className="flex items-center justify-between py-2">
+    <article className="text-ink">
+      {/* Header del post. Niente avatar pesante: nome autore in italica
+          calligrafica grande = identita` tipografica. L'avatar resta piccolo
+          come "timbro" laterale, senza ring colorato (troppo moderno). */}
+      <div className="flex items-start justify-between gap-3 pt-1 pb-3">
         <MemberLink
           memberId={post.author_id}
           ariaLabel={`Apri il profilo di ${post.author.name}`}
@@ -82,30 +96,38 @@ export function PostCard({
             name={post.author.name}
             size="sm"
             color={post.author.color}
-            ringed
           />
           <div className="min-w-0">
-            <p className="font-semibold text-white text-sm leading-tight">{post.author.name}</p>
-            <p className="text-white/40 text-[11px] leading-tight mt-0.5">{formatRelativeTime(post.created_at)}</p>
+            <p
+              className="font-serif italic text-ink leading-tight"
+              style={{ fontSize: '22px', letterSpacing: '0.005em' }}
+            >
+              {post.author.name}
+            </p>
+            <p
+              className="font-serif italic text-sepia leading-tight mt-0.5"
+              style={{ fontSize: '12px' }}
+            >
+              {formatRelativeTime(post.created_at)}
+            </p>
           </div>
         </MemberLink>
         {isOwn && (
           <button
             onClick={() => setShowDeleteConfirm(true)}
-            className="text-white/30 hover:text-red-400 transition-colors p-2 -mr-2 rounded-lg"
+            className="font-serif italic text-sepia hover:text-ink active:scale-95 transition-all min-h-touch px-2 -mr-2"
+            style={{ fontSize: '14px' }}
             aria-label="Elimina post"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
+            elimina
           </button>
         )}
       </div>
 
-      {/* Poll prima del testo se presente (mantiene il visual flow:
-          domanda → eventuale testo di contesto → immagini). */}
+      {/* Poll prima del testo se presente. Reso full-bleed per coerenza con
+          le immagini sotto (esce dai padding del wrapper feed). */}
       {post.poll && onPollVote && onPollRetract && (
-        <div className="-mx-4">
+        <div className="-mx-4 my-2">
           <Poll
             poll={post.poll}
             onVote={(optId) => onPollVote(post.id, optId)}
@@ -114,140 +136,181 @@ export function PostCard({
         </div>
       )}
 
-      {/* Immagini full-bleed: -mx-4 cancella il padding del wrapper feed.
-          gap-0.5 per stile Instagram-grid (linee sottilissime fra tile). */}
-      {post.images && post.images.length > 0 && (
-        <div
-          className={`-mx-4 grid gap-0.5 ${
-            post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-          }`}
-        >
-          {post.images.slice(0, 4).map((img, idx) => (
-            <button
-              type="button"
-              key={img.id}
-              onClick={() => setLightboxIndex(idx)}
-              aria-label={`Apri foto ${idx + 1} di ${post.images.length}`}
-              className={`relative overflow-hidden bg-white/5 active:scale-[0.98] transition-transform ${
-                post.images.length === 1 ? 'h-72' : 'h-40'
-              } ${post.images.length === 3 && idx === 0 ? 'col-span-2' : ''}`}
-            >
-              <img
-                src={img.image_url}
-                alt=""
-                className="w-full h-full object-cover"
-                loading="lazy"
-              />
-              {idx === 3 && post.images.length > 4 && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                  <span className="text-white font-bold text-xl">+{post.images.length - 4}</span>
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Actions row — icone thin-stroke 1.5, niente count inline. I
-          numeri vivono nella riga subdued sotto. */}
-      <div className="flex items-center gap-3 pt-2 pb-1">
-        <button
-          onClick={() => onLike(post.id)}
-          className="p-1 -ml-1 active:scale-90 transition-transform"
-          aria-label={post.liked_by_me ? 'Rimuovi like' : 'Metti like'}
-          aria-pressed={post.liked_by_me}
-        >
-          <svg
-            className={`w-6 h-6 transition-colors ${
-              post.liked_by_me ? 'text-red-400 fill-red-400' : 'text-white/70 fill-none hover:text-red-400'
-            }`}
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.5}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-          </svg>
-        </button>
-        {onCommentsClick ? (
-          <button
-            onClick={() => onCommentsClick(post.id)}
-            className="p-1 active:scale-90 transition-transform"
-            aria-label="Vedi commenti"
-          >
-            <svg className="w-6 h-6 text-white/70 hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-          </button>
-        ) : (
-          <div className="p-1">
-            <svg className="w-6 h-6 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-          </div>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          {onBookmark && (
-            <button
-              type="button"
-              onClick={() => onBookmark(post.id)}
-              className="p-1 active:scale-90 transition-transform"
-              aria-label={post.bookmarked_by_me ? 'Rimuovi dai salvati' : 'Salva post'}
-              aria-pressed={post.bookmarked_by_me}
-            >
-              <svg
-                className={`w-6 h-6 transition-colors ${
-                  post.bookmarked_by_me
-                    ? 'text-[#E8A838] fill-[#E8A838]'
-                    : 'text-white/70 fill-none hover:text-[#E8A838]'
-                }`}
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z" />
-              </svg>
-            </button>
-          )}
-          <ReactionBar
-            postId={post.id}
-            reactions={post.reactions}
-            currentMemberId={currentMemberId}
-            onToggle={(emoji) => onReact(post.id, emoji)}
-          />
-        </div>
-      </div>
-
-      {/* Riga count subdued — pattern Instagram. Visibile solo se c'e
-          qualcosa da contare. "Mi piace" / "commenti" separati da middot. */}
-      {(likeCount > 0 || commentCount > 0) && (
-        <div className="text-white/60 text-xs pb-1">
-          {likeCount > 0 && (
-            <span>{likeCount} {likeCount === 1 ? 'mi piace' : 'mi piace'}</span>
-          )}
-          {likeCount > 0 && commentCount > 0 && <span className="mx-1.5 text-white/30">·</span>}
-          {commentCount > 0 && (
-            onCommentsClick ? (
-              <button
-                onClick={() => onCommentsClick(post.id)}
-                className="text-white/60 hover:text-white"
-              >
-                Vedi {commentCount === 1 ? '1 commento' : `tutti i ${commentCount} commenti`}
-              </button>
-            ) : (
-              <span>{commentCount} {commentCount === 1 ? 'commento' : 'commenti'}</span>
-            )
-          )}
-        </div>
-      )}
-
-      {/* Testo del post DOPO le azioni (pattern Instagram: "username caption").
-          Lo prefissa il nome dell'autore in grassetto per leggibilita`. */}
+      {/* Testo del post — serif libro 17px, sopra le foto (pattern lettera:
+          prima si scrive, poi si "incolla" la fotografia). Niente prefisso
+          nome autore: l'italica grande in alto e` gia` la firma. */}
       {post.text && (
-        <p className="text-white/90 text-body whitespace-pre-wrap pb-2">
-          <span className="font-semibold text-white mr-1.5">{post.author.name}</span>
+        <p
+          className="font-serif text-ink whitespace-pre-wrap pb-3"
+          style={{ fontSize: '17px', lineHeight: '1.65' }}
+        >
           {members ? <MentionText text={post.text} members={members} /> : post.text}
         </p>
       )}
+
+      {/* Foto montate come polaroid. Singola → grande 4:5. Multiple → grid
+          stretto con rotazioni alternate. Cornice bianca + ombra morbida. */}
+      {post.images && post.images.length > 0 && (
+        <div
+          className={`my-2 ${
+            post.images.length === 1
+              ? 'flex justify-center'
+              : 'grid grid-cols-2 gap-4'
+          }`}
+        >
+          {post.images.slice(0, 4).map((img, idx) => {
+            const tilt = polaroidTilt(idx)
+            const isSingle = post.images.length === 1
+            return (
+              <button
+                type="button"
+                key={img.id}
+                onClick={() => setLightboxIndex(idx)}
+                aria-label={`Apri foto ${idx + 1} di ${post.images.length}`}
+                className="relative active:scale-[0.98] transition-transform"
+                style={{
+                  transform: `rotate(${tilt}deg)`,
+                  // Cornice bianca = "polaroid". Ombra morbida color seppia
+                  // per integrarsi con la palette carta.
+                  padding: isSingle ? '10px 10px 14px' : '8px 8px 10px',
+                  background: '#FFFFFF',
+                  boxShadow: '0 2px 10px rgba(58,40,24,0.18)',
+                }}
+              >
+                <div
+                  className="relative overflow-hidden bg-paper"
+                  style={{ aspectRatio: isSingle ? '4 / 5' : '1 / 1' }}
+                >
+                  <img
+                    src={img.image_url}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  {idx === 3 && post.images.length > 4 && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{ background: 'rgba(58,40,24,0.6)' }}
+                    >
+                      <span
+                        className="font-serif italic text-paper"
+                        style={{ fontSize: '24px' }}
+                      >
+                        +{post.images.length - 4}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Riga azioni — solo parole, niente icone fillate.
+          Touch target 44x44px garantito da py-2.5 + min-h-touch.
+          Like attivo → oro tenue. Salva attivo → italic + oro tenue. */}
+      <div
+        className="flex flex-wrap items-center gap-x-5 gap-y-1 pt-3 font-serif"
+        style={{ fontSize: '15px' }}
+      >
+        <button
+          onClick={() => onLike(post.id)}
+          className={`min-h-touch py-2.5 active:scale-95 transition-all ${
+            post.liked_by_me ? 'text-gold-old italic' : 'text-sepia hover:text-ink'
+          }`}
+          aria-label={post.liked_by_me ? 'Rimuovi like' : 'Metti like'}
+          aria-pressed={post.liked_by_me}
+        >
+          {likeCount === 0
+            ? post.liked_by_me
+              ? 'un cuore'
+              : 'un cuore?'
+            : `${likeCount} ${likeCount === 1 ? 'cuore' : 'cuori'}`}
+        </button>
+
+        {onCommentsClick ? (
+          <button
+            onClick={() => onCommentsClick(post.id)}
+            className="min-h-touch py-2.5 text-sepia hover:text-ink active:scale-95 transition-all italic"
+            aria-label="Vedi commenti"
+          >
+            {commentCount === 0
+              ? 'rispondi'
+              : `${commentCount} ${commentCount === 1 ? 'risposta' : 'risposte'}`}
+          </button>
+        ) : (
+          commentCount > 0 && (
+            <span className="min-h-touch py-2.5 text-sepia italic">
+              {commentCount === 1 ? '1 risposta' : `${commentCount} risposte`}
+            </span>
+          )
+        )}
+
+        {onBookmark && (
+          <button
+            type="button"
+            onClick={() => onBookmark(post.id)}
+            className={`min-h-touch py-2.5 active:scale-95 transition-all italic ${
+              post.bookmarked_by_me
+                ? 'text-gold-old'
+                : 'text-sepia hover:text-ink'
+            }`}
+            aria-label={post.bookmarked_by_me ? 'Rimuovi dai salvati' : 'Salva post'}
+            aria-pressed={post.bookmarked_by_me}
+          >
+            {post.bookmarked_by_me ? 'salvato' : 'salva'}
+          </button>
+        )}
+
+        {/* Reactions custom — chip testuale piccola, niente bottone-pillola
+            colorato. Emoji renderizzato come carattere inline, con conteggio
+            in seppia. Active → oro tenue. */}
+        <span className="ml-auto inline-flex items-center gap-3">
+          {REACTION_EMOJIS.map((emoji) => {
+            const forEmoji = post.reactions.filter((r) => r.emoji === emoji)
+            const count = forEmoji.length
+            const pickedByMe =
+              currentMemberId !== undefined &&
+              forEmoji.some((r) => r.member_id === currentMemberId)
+            const names = forEmoji.map((r) => r.member.name).join(', ')
+            const baseLabel = pickedByMe ? `Togli ${emoji}` : `Reagisci con ${emoji}`
+            const label = names ? `${baseLabel} — reagito da ${names}` : baseLabel
+
+            return (
+              <button
+                key={emoji}
+                type="button"
+                aria-pressed={pickedByMe}
+                aria-label={label}
+                onClick={() => onReact(post.id, emoji)}
+                className={`min-h-touch py-2.5 px-1 inline-flex items-baseline gap-1 active:scale-95 transition-all ${
+                  pickedByMe ? 'text-gold-old' : 'text-sepia hover:text-ink'
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    // Emoji color reset: applichiamo opacita` per ammorbidirne
+                    // i toni cromatici e farlo sentire piu` "stampa" che
+                    // "icona-app". Conserva pero` la leggibilita`.
+                    fontSize: '14px',
+                    filter: pickedByMe ? 'none' : 'saturate(0.55)',
+                    opacity: pickedByMe ? 1 : 0.85,
+                  }}
+                >
+                  {emoji}
+                </span>
+                {count > 0 && (
+                  <span className="font-serif italic" style={{ fontSize: '13px' }}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </span>
+      </div>
 
       {/* Lightbox — opened from any of the image tiles above. */}
       {lightboxIndex !== null && (
@@ -258,20 +321,24 @@ export function PostCard({
         />
       )}
 
-      {/* Delete confirm */}
+      {/* Delete confirm — coerente con il resto: pulsanti testo serif, niente
+          chip rossa. La conferma e` deliberatamente lenta, "pensaci due volte". */}
       {showDeleteConfirm && (
-        <div className="flex gap-2 pb-2">
+        <div className="flex items-center gap-4 pt-3 font-serif italic" style={{ fontSize: '15px' }}>
           <button
-            onClick={() => { onDelete(post.id); setShowDeleteConfirm(false) }}
-            className="flex-1 py-2 rounded-xl bg-red-500/20 text-red-400 text-sm font-medium border border-red-500/30 hover:bg-red-500/30 transition-colors"
+            onClick={() => {
+              onDelete(post.id)
+              setShowDeleteConfirm(false)
+            }}
+            className="min-h-touch py-2.5 px-2 text-gold-old hover:text-ink active:scale-95 transition-all"
           >
-            Elimina
+            sì, strappa la pagina
           </button>
           <button
             onClick={() => setShowDeleteConfirm(false)}
-            className="flex-1 py-2 rounded-xl bg-white/5 text-white/60 text-sm font-medium hover:bg-white/10 transition-colors"
+            className="min-h-touch py-2.5 px-2 text-sepia hover:text-ink active:scale-95 transition-all"
           >
-            Annulla
+            annulla
           </button>
         </div>
       )}

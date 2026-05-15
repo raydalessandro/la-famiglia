@@ -1,20 +1,68 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
+import { Cormorant_Garamond, EB_Garamond } from 'next/font/google'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
 import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { compressImage } from '@/lib/storage'
-import { ReactionEmoji, MemberPublic, CreatePollInput, BirthdayToday, ApiResponse } from '@/types/database'
+import { MemberPublic, CreatePollInput, BirthdayToday, ApiResponse } from '@/types/database'
+
+// Cormorant Garamond Italic — italica calligrafica seria settecentesca,
+// usata per nome autore e header pagina "La Famiglia". EB Garamond regular
+// per il body serif "libro" (lettura calma).
+// Font sono caricati solo qui (page-level) perche` solo /feed e i suoi
+// PostCard vivono nella visual language "lettera manoscritta". Il resto
+// dell'app resta Inter.
+const cormorant = Cormorant_Garamond({
+  subsets: ['latin'],
+  style: ['italic', 'normal'],
+  weight: ['400', '500', '600'],
+  variable: '--font-cormorant',
+})
+const ebGaramond = EB_Garamond({
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
+  weight: ['400', '500'],
+  variable: '--font-eb-garamond',
+})
 
 const MAX_POLL_OPTIONS = 4
 const MIN_POLL_OPTIONS = 2
 
 function emptyPollOptions(): string[] {
   return ['', '']
+}
+
+// Dingbat divider — ✻ (sextile / six-pointed asterism) in oro tenue.
+// Scelto rispetto a ❦ (floral heart, troppo decorativo, profuma di San
+// Valentino) e ⁕ (low asterisk, troppo discreto). ✻ ha presenza araldica
+// senza cedere al kitsch — e` quello che separa i capoversi nei libri
+// settecenteschi.
+function Fleuron({ size = 18 }: { size?: number }) {
+  return (
+    <div
+      className="flex items-center justify-center select-none"
+      style={{ margin: '40px 0' }}
+      aria-hidden="true"
+    >
+      <span
+        className="font-serif"
+        style={{
+          color: '#A88830',
+          fontSize: `${size}px`,
+          letterSpacing: '0.4em',
+          // tre dingbat ravvicinati = "asterism" tipografico classico
+          opacity: 0.85,
+        }}
+      >
+        ✻ ✻ ✻
+      </span>
+    </div>
+  )
 }
 
 
@@ -219,51 +267,98 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] pb-24">
-      {/* Header — display title "La Famiglia" in serif italic light per
-          dare identita` tipo Instagram/Threads (la pagina principale
-          parla il nome del prodotto, non l'etichetta della sezione).
-          Niente border-bottom: l'header fluisce nel contenuto. Una sola
-          icona azione (segnalibro per /saved) thin-stroke. */}
-      <div className="sticky top-0 z-30 bg-[#1a1a2e]/95 backdrop-blur">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="font-serif italic font-light text-white text-[26px] leading-none tracking-tight">
+    // Wrapper di tutta la pagina /feed in visual language "lettera manoscritta".
+    // bg-paper sostituisce il navy della shell — la pagina e` un foglio.
+    // Le variabili font sono attaccate qui in cima per propagare ai figli
+    // (PostCard, BottomSheet, toast non rilevanti perche` usano colori propri).
+    <div
+      className={`${cormorant.variable} ${ebGaramond.variable} min-h-screen pb-24 text-ink`}
+      style={{
+        background: '#EDE4D3',
+        // Carta antica con una sfumatura sottilissima e una vignettatura
+        // macchiata via radial-gradient. NIENTE pattern/texture immagini
+        // (lo lascerei per dopo) — qui solo gradienti CSS per stare leggeri.
+        backgroundImage: `
+          radial-gradient(ellipse 80% 60% at 30% 20%, rgba(168,136,48,0.06), transparent 60%),
+          radial-gradient(ellipse 70% 50% at 80% 90%, rgba(58,40,24,0.05), transparent 70%)
+        `,
+        fontFamily: 'var(--font-eb-garamond), Georgia, serif',
+      }}
+    >
+      <style jsx global>{`
+        .feed-vintage .font-serif {
+          font-family: var(--font-cormorant), Georgia, serif;
+        }
+      `}</style>
+
+      {/* Header — "La Famiglia" in italica calligrafica grande, centrata.
+          Niente border-b, niente backdrop blur scuro: lo sfondo carta
+          continua oltre l'header senza interruzione. Dingbat ✻ sotto il
+          titolo come "decorazione araldica". Bottone salvati come testo,
+          coerente con il resto del design (parole, non icone). */}
+      <div className="feed-vintage sticky top-0 z-30" style={{ background: '#EDE4D3' }}>
+        <div className="relative px-4 pt-5 pb-3">
+          <h1
+            className="font-serif italic text-ink text-center leading-none"
+            style={{ fontSize: '34px', letterSpacing: '0.005em' }}
+          >
             La Famiglia
           </h1>
+          <div
+            className="flex items-center justify-center select-none mt-2"
+            aria-hidden="true"
+          >
+            <span
+              className="font-serif"
+              style={{
+                color: '#A88830',
+                fontSize: '14px',
+                letterSpacing: '0.5em',
+                opacity: 0.85,
+              }}
+            >
+              ✻ ✻ ✻
+            </span>
+          </div>
           <button
             type="button"
             onClick={() => router.push('/saved')}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:text-[#E8A838] hover:bg-white/5 transition-colors"
+            className="absolute right-3 top-5 min-h-touch min-w-touch px-3 font-serif italic text-sepia hover:text-ink active:scale-95 transition-all"
+            style={{ fontSize: '14px' }}
             aria-label="Apri post salvati"
           >
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z" />
-            </svg>
+            salvati
           </button>
         </div>
       </div>
 
-      {/* Banner compleanni — visibile solo se almeno un membro di
-       * famiglia compie gli anni oggi. Tap → /family/[id] del
-       * festeggiato (deep link al profilo). Più festeggiati →
-       * un card per ciascuno. */}
+      {/* Banner compleanni — riformattato in stile "annotazione a margine"
+          su sfondo carta, con cornice oro tenue tratteggiata. Mantiene la
+          tap-to-profile logic. */}
       {birthdaysToday.length > 0 && (
-        <div className="px-4 pt-4 flex flex-col gap-2">
+        <div className="feed-vintage px-4 pt-2 flex flex-col gap-2">
           {birthdaysToday.map((b) => (
             <button
               key={b.id}
               type="button"
               onClick={() => router.push(`/family/${b.id}`)}
-              className="w-full text-left rounded-2xl border border-[#E8A838]/30 bg-gradient-to-r from-[#E8A838]/15 to-[#E8A838]/5 px-4 py-3 transition-colors hover:from-[#E8A838]/25"
+              className="w-full text-left px-4 py-3 active:scale-[0.99] transition-transform"
+              style={{
+                border: '1px dashed #A88830',
+                background: 'rgba(168,136,48,0.06)',
+              }}
               aria-label={`Apri profilo di ${b.name}`}
             >
-              <p className="text-sm text-white">
-                <span className="mr-1.5 text-base">🎉</span>
-                Oggi <span className="font-semibold text-[#E8A838]">{b.name}</span>{' '}
+              <p
+                className="font-serif italic text-ink"
+                style={{ fontSize: '17px', lineHeight: '1.5' }}
+              >
+                <span style={{ color: '#A88830' }}>✻</span>{' '}
+                Oggi <span className="font-medium">{b.name}</span>{' '}
                 {b.id === member?.id ? (
-                  <>compi <span className="font-semibold">{b.age}</span> anni. Auguri!</>
+                  <>compi <span className="font-medium">{b.age}</span> anni. Auguri.</>
                 ) : (
-                  <>compie <span className="font-semibold">{b.age}</span> anni. Auguri!</>
+                  <>compie <span className="font-medium">{b.age}</span> anni. Auguri.</>
                 )}
               </p>
             </button>
@@ -271,58 +366,87 @@ export default function FeedPage() {
         </div>
       )}
 
-      {/* Posts */}
-      <div className="px-4 py-4 flex flex-col gap-4">
+      {/* Posts — separati da ornamento dingbat centrale invece che da gap.
+          Il primo post NON ha dingbat sopra (il dingbat dell'header
+          funge gia` da apertura). */}
+      <div className="feed-vintage px-4 py-2 flex flex-col">
         {isLoading && posts.length === 0 ? (
-          Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)
+          Array.from({ length: 3 }).map((_, i) => (
+            <Fragment key={i}>
+              {i > 0 && <Fleuron />}
+              <PostCardSkeleton />
+            </Fragment>
+          ))
         ) : posts.length === 0 ? (
-          <EmptyState
-            icon="📝"
-            title="La bacheca è vuota"
-            description="Condividi una foto, una storia o una ricetta — sarà visibile solo alla famiglia."
-            action={
-              <Button onClick={() => setSheetOpen(true)}>
-                Scrivi il primo post
-              </Button>
-            }
-          />
-        ) : (
-          posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              currentMemberId={member?.id}
-              members={members}
-              onLike={toggleLike}
-              onBookmark={toggleBookmark}
-              onReact={(id, emoji) => {
-                if (member) toggleReaction(id, emoji, member as MemberPublic)
-              }}
-              onDelete={deletePost}
-              onCommentsClick={(id) => router.push(`/feed/${id}`)}
-              onPollVote={votePoll}
-              onPollRetract={retractPollVote}
+          <div className="py-10">
+            <EmptyState
+              icon=""
+              title="Il quaderno è ancora bianco"
+              description="Scrivi qualcosa — una foto, un ricordo, una ricetta. Lo vedrà solo la famiglia."
+              action={
+                <Button onClick={() => setSheetOpen(true)}>
+                  Scrivi il primo post
+                </Button>
+              }
             />
+          </div>
+        ) : (
+          posts.map((post, i) => (
+            <Fragment key={post.id}>
+              {i > 0 && <Fleuron />}
+              <PostCard
+                post={post}
+                currentMemberId={member?.id}
+                members={members}
+                onLike={toggleLike}
+                onBookmark={toggleBookmark}
+                onReact={(id, emoji) => {
+                  if (member) toggleReaction(id, emoji, member as MemberPublic)
+                }}
+                onDelete={deletePost}
+                onCommentsClick={(id) => router.push(`/feed/${id}`)}
+                onPollVote={votePoll}
+                onPollRetract={retractPollVote}
+              />
+            </Fragment>
           ))
         )}
 
         {hasMore && (
-          <div ref={bottomRef} className="flex justify-center py-4">
-            <div className="w-6 h-6 border-2 border-[#E8A838]/40 border-t-[#E8A838] rounded-full animate-spin" />
+          <div ref={bottomRef} className="flex justify-center py-8">
+            <span
+              className="font-serif italic"
+              style={{ color: '#A88830', fontSize: '14px', letterSpacing: '0.1em' }}
+            >
+              ...continua a sfogliare
+            </span>
           </div>
         )}
       </div>
 
-      {/* FAB */}
+      {/* FAB — sostituito il + brutale con un "scrivi" in oro tenue su
+          carta, cornice sottile. Conservato active:scale-95. */}
       <button
         onClick={() => setSheetOpen(true)}
-        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+        className="feed-vintage fixed bottom-24 right-5 z-30 min-h-touch px-5 py-3 font-serif italic active:scale-95 transition-all"
+        style={{
+          fontSize: '17px',
+          background: '#EDE4D3',
+          color: '#A88830',
+          border: '1px solid #A88830',
+          boxShadow: '0 2px 12px rgba(58,40,24,0.18)',
+          borderRadius: '999px',
+        }}
         aria-label="Crea post"
       >
-        +
+        scrivi qualcosa
       </button>
 
-      {/* Create Post BottomSheet */}
+      {/* Create Post BottomSheet — sheet conserva il tema scuro dell'app
+          (e` un componente UI globale, non si tocca). I controlli interni
+          restano com'erano per non rompere la coerenza del componente
+          condiviso. Eccezione: il titolo "Nuovo post" e` gestito dal
+          BottomSheet stesso. */}
       <BottomSheet isOpen={sheetOpen} onClose={handleClose} title="Nuovo post">
         <div className="flex flex-col gap-4 pt-2">
           {/* Author */}

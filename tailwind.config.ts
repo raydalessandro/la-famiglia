@@ -33,6 +33,14 @@ const config: Config = {
           soft: "rgba(232, 168, 56, 0.10)",  // tinted backgrounds
           ring: "rgba(232, 168, 56, 0.30)",  // borders / focus rings
         },
+
+        // Vintage "lettera manoscritta" tokens — usati nella pagina /feed.
+        // Carta antica calda, inchiostro seppia caldo, oro ossidato.
+        // Pensati per coppia text-ink / bg-paper con contrast > 4.5:1 (WCAG AA).
+        paper: "#EDE4D3",        // sfondo carta antica calda
+        ink: "#3A2818",          // testo principale — seppia/inchiostro sbiadito
+        sepia: "#7A6450",        // testo secondario, timestamp
+        "gold-old": "#A88830",   // ornamenti, like attivo
       },
       borderRadius: {
         // Card radius is intentionally generous (16px) — matches modern
