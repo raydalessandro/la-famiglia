@@ -5,8 +5,9 @@ import { useActivities } from '@/hooks/useActivities'
 import { useWeekEvents } from '@/hooks/useWeekEvents'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, BottomSheet, IconPicker, ColorPicker, ParticipantPicker, MiniAvatarStack, MemberLink } from '@/components/ui'
-import { ActivityWithDetails, CalendarEventWithDetails, CreateActivityInput, AttendanceStatus, MemberPublic } from '@/types/database'
+import { Avatar, MiniAvatarStack, MemberLink } from '@/components/ui'
+import { CreateItemSheet } from '@/components/CreateItemSheet'
+import { ActivityWithDetails, CalendarEventWithDetails, AttendanceStatus, MemberPublic } from '@/types/database'
 
 const DAYS_IT = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
 // day_of_week: 1=Mon, 7=Sun (matching Italian week, 0-indexed from Mon)
@@ -530,17 +531,41 @@ function AttendeeRow({
   )
 }
 
-const DEFAULT_FORM: CreateActivityInput = {
-  title: '',
-  icon: '🗓️',
-  color: '#E8A838',
-  day_of_week: 1,
-  time: '09:00',
-  location: '',
-  notes: '',
-  participant_ids: [],
-  roles: [],
+function FilterTab({
+  label,
+  active,
+  onClick,
+  tone,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+  tone: 'neutral' | 'event' | 'activity'
+}) {
+  const activeClass =
+    tone === 'event'
+      ? 'bg-[#E85D75] text-white'
+      : tone === 'activity'
+      ? 'bg-[#E8A838] text-[#1a1a2e]'
+      : 'bg-white/15 text-white'
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
+        active ? activeClass : 'bg-white/5 text-white/50 hover:bg-white/10'
+      }`}
+    >
+      {label}
+    </button>
+  )
 }
+
+// Tab segment per filtrare la vista settimanale. "Tutti" e` la vista
+// unificata di default; "Eventi" e "Attivita" isolano un solo tipo.
+// Coerente con la separazione concettuale ricorrenti vs one-off:
+// l'utente puo` decidere su quale dei due focalizzarsi senza perdere
+// l'altro (basta un tap per tornare a "Tutti").
+type WeekFilter = 'all' | 'events' | 'activities'
 
 // Item discriminato per la vista settimanale unificata. Un giorno della
 // settimana puo` contenere sia attivita` ricorrenti (recurring) che eventi
@@ -568,7 +593,7 @@ function itemSortKey(item: WeekItem): string {
 
 export default function ActivitiesPage() {
   const { member } = useAuth()
-  const { activities, isLoading: isLoadingActivities, createActivity, setMyAttendance, clearMyAttendance } = useActivities()
+  const { activities, isLoading: isLoadingActivities, setMyAttendance, clearMyAttendance } = useActivities()
   const {
     events,
     isLoading: isLoadingEvents,
@@ -580,22 +605,27 @@ export default function ActivitiesPage() {
   const isLoading = isLoadingActivities || isLoadingEvents
 
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [form, setForm] = useState<CreateActivityInput>(DEFAULT_FORM)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [filter, setFilter] = useState<WeekFilter>('all')
   const [modNotes, setModNotes] = useState<Record<string, string>>({})
   const [modNotesOpen, setModNotesOpen] = useState<{ kind: 'activity' | 'event'; id: string } | null>(null)
 
-  // Group activities + events by day_of_week. Per gli eventi il giorno
-  // si deriva dalla event_date in local time. Dentro lo stesso giorno
-  // ordiniamo per orario.
+  // Group activities + events by day_of_week con filtro applicato. Per gli
+  // eventi il giorno si deriva dalla event_date in local time. Dentro lo
+  // stesso giorno ordiniamo per orario.
+  const showActivities = filter !== 'events'
+  const showEvents = filter !== 'activities'
   const grouped = DAY_ORDER.reduce<Record<number, WeekItem[]>>((acc, day) => {
     const items: WeekItem[] = [
-      ...activities
-        .filter((a) => a.day_of_week === day && a.is_active)
-        .map((a): WeekItem => ({ kind: 'activity', activity: a })),
-      ...events
-        .filter((e) => eventDayOfWeek(e.event_date) === day)
-        .map((e): WeekItem => ({ kind: 'event', event: e })),
+      ...(showActivities
+        ? activities
+            .filter((a) => a.day_of_week === day && a.is_active)
+            .map((a): WeekItem => ({ kind: 'activity', activity: a }))
+        : []),
+      ...(showEvents
+        ? events
+            .filter((e) => eventDayOfWeek(e.event_date) === day)
+            .map((e): WeekItem => ({ kind: 'event', event: e }))
+        : []),
     ]
     items.sort((a, b) => itemSortKey(a).localeCompare(itemSortKey(b)))
     acc[day] = items
@@ -632,26 +662,23 @@ export default function ActivitiesPage() {
     setModNotesOpen(null)
   }
 
-  const handleCreate = async () => {
-    if (!form.title.trim()) return
-    setIsSubmitting(true)
-    const ok = await createActivity(form)
-    setIsSubmitting(false)
-    if (ok) {
-      setSheetOpen(false)
-      setForm(DEFAULT_FORM)
-    }
-  }
-
   return (
     <div className="min-h-screen bg-[#1a1a2e] pb-24">
-      {/* Header */}
+      {/* Header + tab filter. Sticky cosi`il filtro resta visibile mentre
+          scorri la settimana. Color-coding: rosa per Eventi, giallo per
+          Attivita`, neutro per "Tutti" — rafforza la distinzione visiva
+          tra i due concetti che oggi condividono la stessa interazione. */}
       <div className="sticky top-0 z-30 bg-[#1a1a2e]/90 backdrop-blur border-b border-white/5">
         <div className="flex items-center justify-between px-4 py-4">
-          <h1 className="text-xl font-bold text-white">Attività</h1>
+          <h1 className="text-xl font-bold text-white">Settimana</h1>
           <span className="text-xs text-white/40 bg-white/5 rounded-full px-3 py-1">
             {new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}
           </span>
+        </div>
+        <div className="px-4 pb-3 flex gap-2">
+          <FilterTab label="Tutti" active={filter === 'all'} onClick={() => setFilter('all')} tone="neutral" />
+          <FilterTab label="📅 Eventi" active={filter === 'events'} onClick={() => setFilter('events')} tone="event" />
+          <FilterTab label="🔁 Attività" active={filter === 'activities'} onClick={() => setFilter('activities')} tone="activity" />
         </div>
       </div>
 
@@ -663,8 +690,14 @@ export default function ActivitiesPage() {
         ) : totalItems === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <span className="text-5xl mb-4">🗓️</span>
-            <p className="text-white/60 text-base">Niente questa settimana.</p>
-            <p className="text-white/40 text-sm mt-1">Aggiungi un&apos;attività ricorrente, o crea un evento dal calendario!</p>
+            <p className="text-white/60 text-base">
+              {filter === 'events'
+                ? 'Nessun evento questa settimana.'
+                : filter === 'activities'
+                ? 'Nessuna attività questa settimana.'
+                : 'Niente questa settimana.'}
+            </p>
+            <p className="text-white/40 text-sm mt-1">Tocca + per aggiungere.</p>
           </div>
         ) : (
           DAY_ORDER.map((day, idx) => {
@@ -706,7 +739,7 @@ export default function ActivitiesPage() {
       <button
         onClick={() => setSheetOpen(true)}
         className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
-        aria-label="Nuova attività"
+        aria-label="Crea evento o attività"
       >
         +
       </button>
@@ -744,105 +777,15 @@ export default function ActivitiesPage() {
         </div>
       )}
 
-      {/* Create Activity BottomSheet */}
-      <BottomSheet isOpen={sheetOpen} onClose={() => { setSheetOpen(false); setForm(DEFAULT_FORM) }} title="Nuova attività">
-        <div className="flex flex-col gap-4 pt-2">
-          {/* Icon + Color row */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-white/50 text-xs mb-1.5 block">Icona</label>
-              <IconPicker value={form.icon ?? '🗓️'} onChange={(icon) => setForm((f) => ({ ...f, icon }))} />
-            </div>
-            <div className="flex-1">
-              <label className="text-white/50 text-xs mb-1.5 block">Colore</label>
-              <ColorPicker value={form.color ?? '#E8A838'} onChange={(color) => setForm((f) => ({ ...f, color }))} />
-            </div>
-          </div>
-
-          {/* Title */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Titolo *</label>
-            <input
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder="Es. Allenamento calcio"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          {/* Day of week */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Giorno della settimana</label>
-            <div className="flex gap-1 flex-wrap">
-              {DAYS_IT.map((day, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setForm((f) => ({ ...f, day_of_week: idx + 1 }))}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    form.day_of_week === idx + 1
-                      ? 'bg-[#E8A838] text-[#1a1a2e]'
-                      : 'bg-white/5 text-white/50 hover:bg-white/10'
-                  }`}
-                >
-                  {day.slice(0, 3)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Time */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Orario</label>
-            <input
-              type="time"
-              value={form.time}
-              onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          {/* Location */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Luogo</label>
-            <input
-              value={form.location ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-              placeholder="Dove si svolge?"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          {/* Participants */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Partecipanti</label>
-            <ParticipantPicker
-              members={members}
-              selected={form.participant_ids}
-              onChange={(ids) => setForm((f) => ({ ...f, participant_ids: ids }))}
-            />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Note</label>
-            <textarea
-              value={form.notes ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              placeholder="Note aggiuntive..."
-              rows={2}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm resize-none focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          <button
-            onClick={handleCreate}
-            disabled={isSubmitting || !form.title.trim()}
-            className="w-full py-3.5 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm disabled:opacity-40 hover:bg-[#E8A838]/90 active:scale-95 transition-all"
-          >
-            {isSubmitting ? 'Creando...' : 'Crea attività'}
-          </button>
-        </div>
-      </BottomSheet>
+      {/* Create item sheet unificata: default su 'activity' qui (pagina
+          Attivita`/Settimana), ma con toggle interno per creare anche
+          eventi senza navigare a /calendar. */}
+      <CreateItemSheet
+        isOpen={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        defaultKind="activity"
+        members={members}
+      />
     </div>
   )
 }

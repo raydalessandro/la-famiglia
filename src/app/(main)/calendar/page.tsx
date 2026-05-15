@@ -5,8 +5,9 @@ import { useEvents } from '@/hooks/useEvents'
 import { useActivities } from '@/hooks/useActivities'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { BottomSheet, IconPicker, ColorPicker, ParticipantPicker, Button } from '@/components/ui'
-import { CalendarEventWithDetails, ActivityWithDetails, CreateEventInput } from '@/types/database'
+import { BottomSheet } from '@/components/ui'
+import { CreateItemSheet } from '@/components/CreateItemSheet'
+import { CalendarEventWithDetails, ActivityWithDetails } from '@/types/database'
 
 const MONTHS_IT = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -43,17 +44,6 @@ function formatDateKey(d: Date): string {
   return `${y}-${m}-${dd}`
 }
 
-const DEFAULT_EVENT_FORM: CreateEventInput = {
-  title: '',
-  icon: '📅',
-  color: '#E8A838',
-  event_date: new Date().toISOString().slice(0, 10),
-  event_time: '',
-  location: '',
-  notes: '',
-  participant_ids: [],
-}
-
 export default function CalendarPage() {
   const today = new Date()
   const [viewYear, setViewYear] = useState(today.getFullYear())
@@ -61,10 +51,12 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [daySheetOpen, setDaySheetOpen] = useState(false)
   const [createSheetOpen, setCreateSheetOpen] = useState(false)
-  const [form, setForm] = useState<CreateEventInput>({ ...DEFAULT_EVENT_FORM })
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  // Data pre-compilata nella CreateItemSheet quando l'utente apre create
+  // da un giorno specifico del calendario. undefined = oggi (default
+  // gestito dalla sheet stessa).
+  const [createForDate, setCreateForDate] = useState<string | undefined>(undefined)
 
-  const { events, createEvent } = useEvents(viewMonth, viewYear)
+  const { events } = useEvents(viewMonth, viewYear)
   const { activities } = useActivities()
   const { members } = useMembers()
   useAuth()
@@ -126,22 +118,8 @@ export default function CalendarPage() {
   }
 
   const handleCreateOpen = (dateKey?: string) => {
-    setForm({
-      ...DEFAULT_EVENT_FORM,
-      event_date: dateKey ?? todayKey,
-    })
+    setCreateForDate(dateKey ?? todayKey)
     setCreateSheetOpen(true)
-  }
-
-  const handleCreate = async () => {
-    if (!form.title.trim()) return
-    setIsSubmitting(true)
-    const ok = await createEvent(form)
-    setIsSubmitting(false)
-    if (ok) {
-      setCreateSheetOpen(false)
-      setForm({ ...DEFAULT_EVENT_FORM })
-    }
   }
 
   return (
@@ -238,7 +216,7 @@ export default function CalendarPage() {
       <button
         onClick={() => handleCreateOpen()}
         className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
-        aria-label="Nuovo evento"
+        aria-label="Crea evento o attività"
       >
         +
       </button>
@@ -319,97 +297,17 @@ export default function CalendarPage() {
         </div>
       </BottomSheet>
 
-      {/* Create event sheet */}
-      <BottomSheet isOpen={createSheetOpen} onClose={() => setCreateSheetOpen(false)} title="Nuovo evento">
-        <div className="flex flex-col gap-4 pt-2">
-          {/* Icon + Color */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-white/50 text-xs mb-1.5 block">Icona</label>
-              <IconPicker value={form.icon ?? '📅'} onChange={(icon) => setForm((f) => ({ ...f, icon }))} />
-            </div>
-            <div className="flex-1">
-              <label className="text-white/50 text-xs mb-1.5 block">Colore</label>
-              <ColorPicker value={form.color ?? '#E8A838'} onChange={(color) => setForm((f) => ({ ...f, color }))} />
-            </div>
-          </div>
-
-          {/* Title */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Titolo *</label>
-            <input
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder="Nome dell'evento"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          {/* Date */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Data</label>
-            <input
-              type="date"
-              value={form.event_date}
-              onChange={(e) => setForm((f) => ({ ...f, event_date: e.target.value }))}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          {/* Time */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Orario (opzionale)</label>
-            <input
-              type="time"
-              value={form.event_time ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, event_time: e.target.value }))}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          {/* Location */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Luogo</label>
-            <input
-              value={form.location ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-              placeholder="Dove?"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          {/* Participants */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Partecipanti</label>
-            <ParticipantPicker
-              members={members}
-              selected={form.participant_ids ?? []}
-              onChange={(ids) => setForm((f) => ({ ...f, participant_ids: ids }))}
-            />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="text-white/50 text-xs mb-1.5 block">Note</label>
-            <textarea
-              value={form.notes ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              placeholder="Dettagli aggiuntivi..."
-              rows={2}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm resize-none focus:outline-none focus:border-[#E8A838]/60"
-            />
-          </div>
-
-          <Button
-            onClick={handleCreate}
-            disabled={!form.title.trim()}
-            loading={isSubmitting}
-            fullWidth
-          >
-            {isSubmitting ? 'Creando...' : 'Crea evento'}
-          </Button>
-        </div>
-      </BottomSheet>
+      {/* Create item sheet unificata: default su 'event' qui (pagina
+          Calendario) con la data del giorno selezionato pre-compilata,
+          ma con toggle interno per creare anche un'attivita` ricorrente
+          senza navigare a /attivita. */}
+      <CreateItemSheet
+        isOpen={createSheetOpen}
+        onClose={() => setCreateSheetOpen(false)}
+        defaultKind="event"
+        defaultEventDate={createForDate}
+        members={members}
+      />
     </div>
   )
 }
