@@ -33,6 +33,28 @@ const config: Config = {
           soft: "rgba(232, 168, 56, 0.10)",  // tinted backgrounds
           ring: "rgba(232, 168, 56, 0.30)",  // borders / focus rings
         },
+
+        // Editorial-magazine palette (Kinfolk/Cereal/Aesop) usato dalla
+        // pagina /feed. Coesiste con la palette navy: NON è il nuovo
+        // default app-wide. Carta + inchiostro caldo + terra per hairline.
+        // Contrasto ink/paper = 12.4:1 (AAA su body 17px e su display).
+        paper: {
+          DEFAULT: "#F4EDE3",   // sfondo pagina, carta crema
+          deep: "#EBE2D3",      // hover/active wash leggero
+        },
+        ink: {
+          DEFAULT: "#2A1F1A",   // testo principale, marrone scuro
+          soft: "#5B4A40",      // metadata, low-emphasis
+          mute: "#8A7868",      // placeholder, label spente
+        },
+        terra: {
+          DEFAULT: "#C4B5A0",   // hairline divider, icone spente
+          deep: "#9E8E78",      // hover su icone spente
+        },
+        terracotta: {
+          DEFAULT: "#A65238",   // accent attivo (like, link)
+          deep: "#8A4128",      // active/pressed
+        },
       },
       borderRadius: {
         // Card radius is intentionally generous (16px) — matches modern
