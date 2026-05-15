@@ -8,6 +8,68 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-15 — Compleanni membri (Fase 6.5, parte 1: schema DB)
+
+**Why**. La famiglia ha dimenticato il compleanno di una zia, e
+Famiglia esiste anche per evitare questo. Aggiungiamo la data di
+nascita ai membri come fondazione per banner sul feed + push
+notification il giorno del compleanno.
+
+Questa entry copre **solo la migration SQL**. Cron Vercel, endpoint
+`/api/cron/birthday-notifications`, settings date picker e banner
+feed verranno in PR separate.
+
+**What to apply on production**
+
+Già **applicata via MCP** sul progetto remoto `la-famiglia`
+(`syikumgxsfnoxrwrbste`) il 2026-05-15. Idempotente (ADD COLUMN IF
+NOT EXISTS, CREATE INDEX IF NOT EXISTS).
+
+Applica una migration:
+- `013_member_birthdays.sql` — aggiunge `members.birth_date DATE`
+  nullable. Tipo `DATE` (non `TIMESTAMPTZ`) perché vogliamo il
+  giorno calendariale, non un istante. Campo opzionale: alcuni
+  membri potrebbero non volerlo inserire subito.
+- Crea `idx_members_birthday` come index composito parziale su
+  `(extract(month from birth_date), extract(day from birth_date))`
+  con filtro `WHERE birth_date IS NOT NULL`. Supporta la query
+  "compleanno = oggi" indipendente dall'anno per
+  `GET /api/birthdays/today` e per il cron giornaliero.
+
+**Deviazione dallo schema in HANDOFF.md** (segnalata e approvata
+prima della migration). Lo snippet originale proponeva
+`to_char(birth_date, 'MM-DD')` ma `to_char(date, text)` è marcata
+`STABLE` (non `IMMUTABLE`) in Postgres perché dipende da `lc_time`:
+l'index expression viene rifiutata con `ERROR 42P17`.
+`extract(month|day from date)` è invece `IMMUTABLE` ed è la forma
+canonica per questo pattern in Postgres. Stessa intenzione, query
+leggermente diversa nelle API:
+
+```sql
+WHERE extract(month from birth_date) = $1
+  AND extract(day   from birth_date) = $2
+```
+
+**Verifica post-migration** (eseguita via MCP):
+- Colonna `birth_date DATE` nullable creata su `members` ✓
+- Index `idx_members_birthday` parziale composito creato ✓
+- Niente regressione advisor: il set di `rls_enabled_no_policy`
+  resta identico (la tabella `members` aveva già la sua config
+  RLS, l'ADD COLUMN non l'ha toccata).
+- 7 membri esistenti, 0 con `birth_date` valorizzato — atteso, i
+  valori verranno inseriti via Settings.
+
+**API e UI**: rimangono da implementare in PR separate (vedi
+`HANDOFF.md` sez. 6.5 per spec). Previste:
+- `PATCH /api/auth/members/:id` accetta `birth_date?` (solo self o admin).
+- `GET /api/birthdays/today` ritorna membri con compleanno oggi.
+- Vercel Cron giornaliero alle 08:00 (richiede `vercel.json` —
+  config Vercel separata, NON in questa PR).
+- Settings: date picker IT.
+- Feed: banner "🎉 Oggi Marco compie X anni. Auguri!".
+
+---
+
 ## 2026-05-15 — Bookmark / salva post (Fase 6.4)
 
 **Why**. La nonna salva spesso ricette nei post per rileggerle e oggi
