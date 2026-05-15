@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useActivities } from '@/hooks/useActivities'
+import { useWeekEvents } from '@/hooks/useWeekEvents'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
 import { Avatar, BottomSheet, IconPicker, ColorPicker, ParticipantPicker, MiniAvatarStack, MemberLink } from '@/components/ui'
-import { ActivityWithDetails, CreateActivityInput, AttendanceStatus, MemberPublic } from '@/types/database'
+import { ActivityWithDetails, CalendarEventWithDetails, CreateActivityInput, AttendanceStatus, MemberPublic } from '@/types/database'
 
 const DAYS_IT = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
 // day_of_week: 1=Mon, 7=Sun (matching Italian week, 0-indexed from Mon)
@@ -276,6 +277,216 @@ function ActivityCard({
   )
 }
 
+// Variante della card per gli eventi one-off. Visualmente speculare a
+// ActivityCard ma con tre differenze sostanziali:
+//   1. Non ha `participants` (roster) — quindi niente gruppo "Non hanno
+//      risposto" (pending). Sotto il modello nuovo gli eventi non hanno
+//      roster: solo chi risponde compare nei vari stati.
+//   2. Non ha `roles` (concetto solo delle attivita`).
+//   3. Mostra la data dell'evento (formato giorno+mese in italiano)
+//      perche` un evento one-off vive su una data specifica, mentre
+//      l'attivita` e` ricorrente.
+function EventCard({
+  event,
+  currentMemberId,
+  onSetMyStatus,
+  onClearMyStatus,
+}: {
+  event: CalendarEventWithDetails
+  currentMemberId: string | undefined
+  onSetMyStatus: (id: string, status: AttendanceStatus) => void
+  onClearMyStatus: (id: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  const attendances = event.attendances ?? []
+  const myAttendance = attendances.find((a) => a.member_id === currentMemberId)
+  const myStatus = (myAttendance?.status ?? null) as AttendanceStatus | null
+
+  const confirmed: MemberPublic[] = []
+  const skipped: MemberPublic[] = []
+  const modified: MemberPublic[] = []
+  for (const a of attendances) {
+    if (!a.member) continue
+    if (a.status === 'confirmed') confirmed.push(a.member)
+    else if (a.status === 'skipped') skipped.push(a.member)
+    else if (a.status === 'modified') modified.push(a.member)
+  }
+
+  const canMarkAttendance = !!currentMemberId
+  const myPillStatus: AttendanceStatus | 'pending' = myStatus ?? 'pending'
+
+  // event_date arriva come YYYY-MM-DD da Supabase. Costruiamo la Date in
+  // local time evitando il "off-by-one" tipico di `new Date('2026-05-15')`
+  // che e` interpretato come UTC.
+  const [y, m, d] = event.event_date.split('-').map(Number)
+  const localDate = new Date(y, m - 1, d)
+  const dateLabel = localDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
+
+  return (
+    <div
+      className="bg-[#16213e] rounded-2xl overflow-hidden border border-white/5"
+      style={{ borderLeft: `3px solid ${event.color || '#E85D75'}` }}
+    >
+      <button
+        className="w-full text-left px-4 py-4"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0"
+            style={{ backgroundColor: `${event.color || '#E85D75'}22` }}
+          >
+            {event.icon || '📅'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-semibold text-white text-sm truncate">{event.title}</p>
+              {canMarkAttendance && myStatus && (
+                <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${MY_STATUS_PILL[myPillStatus]}`}>
+                  {MY_STATUS_LABEL[myPillStatus]}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              {/* Pill data per distinguere visivamente da un'attivita` ricorrente. */}
+              <span className="text-[#E85D75] text-xs font-medium uppercase tracking-wider">
+                {dateLabel}
+              </span>
+              {event.event_time && (
+                <span className="text-white/50 text-xs flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {event.event_time}
+                </span>
+              )}
+              {event.location && (
+                <span className="text-white/50 text-xs flex items-center gap-1 truncate">
+                  <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  </svg>
+                  <span className="truncate">{event.location}</span>
+                </span>
+              )}
+            </div>
+            {/* Riepilogo presenze (solo se almeno uno ha risposto). */}
+            {(confirmed.length + skipped.length + modified.length) > 0 && (
+              <div className="mt-2 flex items-center gap-3 flex-wrap">
+                {confirmed.length > 0 && (
+                  <div className="flex items-center gap-1.5" title={`${confirmed.length} confermati`}>
+                    <span className="text-emerald-400 text-xs">✓</span>
+                    <MiniAvatarStack members={confirmed} max={3} />
+                  </div>
+                )}
+                {modified.length > 0 && (
+                  <div className="flex items-center gap-1.5" title={`${modified.length} modificano`}>
+                    <span className="text-blue-400 text-xs">✏️</span>
+                    <MiniAvatarStack members={modified} max={3} />
+                  </div>
+                )}
+                {skipped.length > 0 && (
+                  <div className="flex items-center gap-1.5 opacity-60" title={`${skipped.length} saltano`}>
+                    <span className="text-white/40 text-xs">⏭</span>
+                    <MiniAvatarStack members={skipped} max={3} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <svg
+            className={`w-4 h-4 text-white/30 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {/* Status buttons identici a ActivityCard. */}
+      {canMarkAttendance && (
+        <div className="px-4 pb-3 flex gap-2">
+          <button
+            onClick={() => onSetMyStatus(event.id, 'confirmed')}
+            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
+              myStatus === 'confirmed'
+                ? 'bg-emerald-500 text-white'
+                : 'bg-white/5 text-white/50 hover:bg-emerald-500/20 hover:text-emerald-300'
+            }`}
+          >
+            Confermo ✅
+          </button>
+          <button
+            onClick={() => onSetMyStatus(event.id, 'skipped')}
+            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
+              myStatus === 'skipped'
+                ? 'bg-white/20 text-white'
+                : 'bg-white/5 text-white/50 hover:bg-white/10'
+            }`}
+          >
+            Salto ⏭
+          </button>
+          <button
+            onClick={() => onSetMyStatus(event.id, 'modified')}
+            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
+              myStatus === 'modified'
+                ? 'bg-blue-500 text-white'
+                : 'bg-white/5 text-white/50 hover:bg-blue-500/20 hover:text-blue-300'
+            }`}
+          >
+            Modifico ✏️
+          </button>
+        </div>
+      )}
+
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-white/5 pt-3 flex flex-col gap-3">
+          {confirmed.length > 0 && (
+            <AttendeeRow label="Confermano" tone="emerald" members={confirmed} />
+          )}
+          {modified.length > 0 && (
+            <AttendeeRow label="Modificano" tone="blue" members={modified} />
+          )}
+          {skipped.length > 0 && (
+            <AttendeeRow label="Salteranno" tone="muted" members={skipped} />
+          )}
+          {confirmed.length + skipped.length + modified.length === 0 && (
+            <p className="text-white/40 text-xs italic">Nessuna risposta ancora.</p>
+          )}
+
+          {/* Note "modifico" dei singoli membri. */}
+          {attendances
+            .filter((a) => a.status === 'modified' && a.modified_notes)
+            .map((a) => (
+              <div key={a.id} className="bg-blue-500/10 rounded-xl px-3 py-2 border border-blue-500/20">
+                <p className="text-blue-300 text-xs">
+                  {a.member && <span className="font-medium">{a.member.name}: </span>}
+                  {a.modified_notes}
+                </p>
+              </div>
+            ))}
+
+          {event.notes && (
+            <div>
+              <p className="text-white/40 text-xs mb-1 uppercase tracking-wide">Note</p>
+              <p className="text-white/70 text-xs whitespace-pre-wrap">{event.notes}</p>
+            </div>
+          )}
+
+          {myStatus && (
+            <button
+              onClick={() => onClearMyStatus(event.id)}
+              className="text-white/40 text-xs hover:text-white/60 transition-colors text-left"
+            >
+              Annulla la mia risposta
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AttendeeRow({
   label,
   tone,
@@ -331,33 +542,93 @@ const DEFAULT_FORM: CreateActivityInput = {
   roles: [],
 }
 
+// Item discriminato per la vista settimanale unificata. Un giorno della
+// settimana puo` contenere sia attivita` ricorrenti (recurring) che eventi
+// one-off accadiati in quella data; entrambi mostrano la stessa interazione
+// (Confermo/Salto/Modifico).
+type WeekItem =
+  | { kind: 'activity'; activity: ActivityWithDetails }
+  | { kind: 'event'; event: CalendarEventWithDetails }
+
+// YYYY-MM-DD → 1=Lun..7=Dom. Costruiamo la Date in local time per evitare
+// il "off-by-one" tipico di `new Date('2026-05-15')` (UTC).
+function eventDayOfWeek(eventDate: string): number {
+  const [y, m, d] = eventDate.split('-').map(Number)
+  const dow = new Date(y, m - 1, d).getDay() // 0=Sun, 1=Mon...6=Sat
+  return dow === 0 ? 7 : dow
+}
+
+// Estrae l'orario per ordinamento entro lo stesso giorno. Le attivita`
+// hanno `time` (sempre presente), gli eventi possono avere `event_time` null
+// (tutto-il-giorno) → li portiamo in fondo con un sentinel.
+function itemSortKey(item: WeekItem): string {
+  if (item.kind === 'activity') return item.activity.time
+  return item.event.event_time ?? '99:99'
+}
+
 export default function ActivitiesPage() {
   const { member } = useAuth()
-  const { activities, isLoading, createActivity, setMyAttendance, clearMyAttendance } = useActivities()
+  const { activities, isLoading: isLoadingActivities, createActivity, setMyAttendance, clearMyAttendance } = useActivities()
+  const {
+    events,
+    isLoading: isLoadingEvents,
+    setMyEventAttendance,
+    clearMyEventAttendance,
+  } = useWeekEvents()
   const { members } = useMembers()
+
+  const isLoading = isLoadingActivities || isLoadingEvents
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [form, setForm] = useState<CreateActivityInput>(DEFAULT_FORM)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [modNotes, setModNotes] = useState<Record<string, string>>({})
-  const [modNotesOpen, setModNotesOpen] = useState<string | null>(null)
+  const [modNotesOpen, setModNotesOpen] = useState<{ kind: 'activity' | 'event'; id: string } | null>(null)
 
-  // Group activities by day_of_week
-  const grouped = DAY_ORDER.reduce<Record<number, ActivityWithDetails[]>>((acc, day) => {
-    acc[day] = activities.filter((a) => a.day_of_week === day && a.is_active)
+  // Group activities + events by day_of_week. Per gli eventi il giorno
+  // si deriva dalla event_date in local time. Dentro lo stesso giorno
+  // ordiniamo per orario.
+  const grouped = DAY_ORDER.reduce<Record<number, WeekItem[]>>((acc, day) => {
+    const items: WeekItem[] = [
+      ...activities
+        .filter((a) => a.day_of_week === day && a.is_active)
+        .map((a): WeekItem => ({ kind: 'activity', activity: a })),
+      ...events
+        .filter((e) => eventDayOfWeek(e.event_date) === day)
+        .map((e): WeekItem => ({ kind: 'event', event: e })),
+    ]
+    items.sort((a, b) => itemSortKey(a).localeCompare(itemSortKey(b)))
+    acc[day] = items
     return acc
-  }, {} as Record<number, ActivityWithDetails[]>)
+  }, {} as Record<number, WeekItem[]>)
 
-  const handleSetMyStatus = async (id: string, status: AttendanceStatus) => {
+  const totalItems = Object.values(grouped).reduce((sum, list) => sum + list.length, 0)
+
+  const handleSetMyActivityStatus = async (id: string, status: AttendanceStatus) => {
     if (status === 'modified') {
-      setModNotesOpen(id)
+      setModNotesOpen({ kind: 'activity', id })
       return
     }
     await setMyAttendance(id, status)
   }
 
-  const handleModifiedConfirm = async (id: string) => {
-    await setMyAttendance(id, 'modified', modNotes[id] ?? '')
+  const handleSetMyEventStatus = async (id: string, status: AttendanceStatus) => {
+    if (status === 'modified') {
+      setModNotesOpen({ kind: 'event', id })
+      return
+    }
+    await setMyEventAttendance(id, status)
+  }
+
+  const handleModifiedConfirm = async () => {
+    if (!modNotesOpen) return
+    const { kind, id } = modNotesOpen
+    const note = modNotes[`${kind}-${id}`] ?? ''
+    if (kind === 'activity') {
+      await setMyAttendance(id, 'modified', note)
+    } else {
+      await setMyEventAttendance(id, 'modified', note)
+    }
     setModNotesOpen(null)
   }
 
@@ -389,31 +660,41 @@ export default function ActivitiesPage() {
           Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-32 bg-[#16213e] rounded-2xl animate-pulse border border-white/5" />
           ))
-        ) : activities.length === 0 ? (
+        ) : totalItems === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <span className="text-5xl mb-4">🗓️</span>
-            <p className="text-white/60 text-base">Nessuna attività.</p>
-            <p className="text-white/40 text-sm mt-1">Aggiungi la prima attività ricorrente!</p>
+            <p className="text-white/60 text-base">Niente questa settimana.</p>
+            <p className="text-white/40 text-sm mt-1">Aggiungi un&apos;attività ricorrente, o crea un evento dal calendario!</p>
           </div>
         ) : (
           DAY_ORDER.map((day, idx) => {
-            const dayActivities = grouped[day]
-            if (dayActivities.length === 0) return null
+            const dayItems = grouped[day]
+            if (dayItems.length === 0) return null
             return (
               <section key={day}>
                 <h2 className="text-[#E8A838] font-semibold text-sm mb-3 uppercase tracking-wider">
                   {DAYS_IT[idx]}
                 </h2>
                 <div className="flex flex-col gap-3">
-                  {dayActivities.map((activity) => (
-                    <ActivityCard
-                      key={activity.id}
-                      activity={activity}
-                      currentMemberId={member?.id}
-                      onSetMyStatus={handleSetMyStatus}
-                      onClearMyStatus={clearMyAttendance}
-                    />
-                  ))}
+                  {dayItems.map((item) =>
+                    item.kind === 'activity' ? (
+                      <ActivityCard
+                        key={`a-${item.activity.id}`}
+                        activity={item.activity}
+                        currentMemberId={member?.id}
+                        onSetMyStatus={handleSetMyActivityStatus}
+                        onClearMyStatus={clearMyAttendance}
+                      />
+                    ) : (
+                      <EventCard
+                        key={`e-${item.event.id}`}
+                        event={item.event}
+                        currentMemberId={member?.id}
+                        onSetMyStatus={handleSetMyEventStatus}
+                        onClearMyStatus={clearMyEventAttendance}
+                      />
+                    )
+                  )}
                 </div>
               </section>
             )
@@ -430,21 +711,31 @@ export default function ActivitiesPage() {
         +
       </button>
 
-      {/* Modified notes overlay */}
+      {/* Modified notes overlay. Stessa UX per attivita` ed eventi:
+          discriminator nella state determina l'API da chiamare al confirm. */}
       {modNotesOpen && (
         <div className="fixed inset-0 z-50 flex items-end">
           <div className="absolute inset-0 bg-black/60" onClick={() => setModNotesOpen(null)} />
           <div className="relative w-full bg-[#1a1a2e] rounded-t-2xl p-6 flex flex-col gap-4">
             <h3 className="text-white font-semibold text-base text-center">Note modifica</h3>
             <textarea
-              value={modNotes[modNotesOpen] ?? ''}
-              onChange={(e) => setModNotes((prev) => ({ ...prev, [modNotesOpen]: e.target.value }))}
-              placeholder="Spiega come è stata modificata l'attività..."
+              value={modNotes[`${modNotesOpen.kind}-${modNotesOpen.id}`] ?? ''}
+              onChange={(e) =>
+                setModNotes((prev) => ({
+                  ...prev,
+                  [`${modNotesOpen.kind}-${modNotesOpen.id}`]: e.target.value,
+                }))
+              }
+              placeholder={
+                modNotesOpen.kind === 'activity'
+                  ? "Spiega come è stata modificata l'attività..."
+                  : 'Spiega come hai modificato la tua partecipazione...'
+              }
               rows={3}
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm resize-none focus:outline-none focus:border-[#E8A838]/60"
             />
             <button
-              onClick={() => handleModifiedConfirm(modNotesOpen)}
+              onClick={handleModifiedConfirm}
               className="w-full py-3 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm"
             >
               Conferma modifica ✏️
