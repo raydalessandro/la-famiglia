@@ -9,45 +9,71 @@ type RouteContext = { params: Promise<{ id: string }> }
 
 const DELETED_PLACEHOLDER = '[Messaggio eliminato]'
 
-// Shape della relazione self-join `reply_to` come Supabase ce la consegna:
-// solo i campi richiesti + author nested.
-type RawReplyJoin = {
-  id: string
-  text: string
-  deleted_at: string | null
+// Raw shape dei parent messaggi che vengono citati dai reply: stessa forma
+// di un ChatMessage con l'author embedded (subset).
+type RawParentMessage = ChatMessage & {
   author: { id: string; name: string; color: string } | null
-} | null
+}
 
 /**
- * Trasforma il payload Supabase con il join `reply_to` nello shape pulito
- * `ChatMessageWithAuthor`. Applica anche il tombstone per soft-delete:
+ * Applica il tombstone per soft-delete sul testo del messaggio principale
+ * e (se presente) sulla citation embedded. Il testo originale di un
+ * messaggio eliminato non lascia mai il server: viene sostituito con
+ * "[Messaggio eliminato]" PRIMA della response. Stesso trattamento sulla
+ * citazione di un messaggio eliminato.
  *
- *   1. Se il messaggio è esso stesso `deleted_at` non-NULL → `text` viene
- *      sostituito con "[Messaggio eliminato]" PRIMA di lasciare il server,
- *      così il client non vede mai il testo originale anche manipolando
- *      la response.
- *   2. Se il `reply_to` ha `deleted_at` non-NULL → stesso trattamento sulla
- *      citazione embedded.
- *   3. Se `reply_to_message_id` è non-NULL ma il join torna NULL → il
- *      messaggio originale è stato hard-deleted (impossibile col solo
- *      tombstone, ma per robustezza). In quel caso `reply_to` è NULL e la
- *      UI mostrerà comunque "Messaggio eliminato" leggendo lo stato.
+ * `parent` è il parent messaggio già recuperato dalla seconda query (o
+ * null se `reply_to_message_id` è null o se il parent non esiste — caso
+ * limite con FK ON DELETE SET NULL).
  */
 function shapeMessage(
-  raw: ChatMessage & { author: MemberPublic; reply_to?: RawReplyJoin },
+  raw: ChatMessage & { author: MemberPublic },
+  parent: RawParentMessage | null,
 ): ChatMessageWithAuthor {
   const text = raw.deleted_at ? DELETED_PLACEHOLDER : raw.text
 
   let reply_to: ChatMessageReplyRef | null = null
-  if (raw.reply_to && raw.reply_to.author) {
+  if (parent && parent.author) {
     reply_to = {
-      id: raw.reply_to.id,
-      text: raw.reply_to.deleted_at ? DELETED_PLACEHOLDER : raw.reply_to.text,
-      author: raw.reply_to.author,
+      id: parent.id,
+      text: parent.deleted_at ? DELETED_PLACEHOLDER : parent.text,
+      author: parent.author,
     }
   }
 
   return { ...raw, text, reply_to }
+}
+
+/**
+ * Recupera in batch i parent messaggi citati da una lista di messaggi.
+ * Ritorna una Map id → parent (con author embedded). Niente self-join
+ * PostgREST: si fa una IN su `chat_messages` + un join semplice
+ * `author:members(...)`. Più robusto del self-join via FK constraint name
+ * (che dipende dallo schema cache di PostgREST).
+ */
+async function fetchReplyParents(
+  db: ReturnType<typeof createServerClient>,
+  messages: ChatMessage[],
+): Promise<Map<string, RawParentMessage>> {
+  const parentIds = Array.from(
+    new Set(
+      messages
+        .map((m) => m.reply_to_message_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  )
+  if (parentIds.length === 0) return new Map()
+
+  const { data: parents } = await db
+    .from('chat_messages')
+    .select('id, text, deleted_at, author:members(id, name, color)')
+    .in('id', parentIds)
+
+  const map = new Map<string, RawParentMessage>()
+  for (const p of (parents ?? []) as unknown as RawParentMessage[]) {
+    map.set(p.id, p)
+  }
+  return map
 }
 
 // Verify the current member is part of the chat group (or is an admin).
@@ -110,19 +136,14 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 
   const total = count ?? 0
 
-  // Data query (paginated). Join su author + self-join su reply_to per
-  // la citation embedded. Il nested author dentro reply_to serve a colorare
-  // la cornice della citazione col colore del membro citato.
+  // Data query (paginated). Join su author. Per il `reply_to` facciamo
+  // una seconda query batch sui parent (vedi fetchReplyParents) invece di
+  // un self-join PostgREST: il self-join richiederebbe il nome esatto del
+  // FK constraint e il refresh dello schema cache, che si è dimostrato
+  // fragile dopo le migration 010/011.
   const { data: messages, error } = await db
     .from('chat_messages')
-    .select(
-      `*,
-       author:members!chat_messages_author_id_fkey(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color),
-       reply_to:chat_messages!chat_messages_reply_to_message_id_fkey(
-         id, text, deleted_at,
-         author:members!chat_messages_author_id_fkey(id, name, color)
-       )`,
-    )
+    .select('*, author:members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
     .eq('group_id', groupId)
     .order('created_at', { ascending: false })
     .range(from, to)
@@ -134,8 +155,10 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
     )
   }
 
-  const data = (messages ?? []).map((m) =>
-    shapeMessage(m as ChatMessage & { author: MemberPublic; reply_to?: RawReplyJoin }),
+  const rawMessages = (messages ?? []) as unknown as (ChatMessage & { author: MemberPublic })[]
+  const parents = await fetchReplyParents(db, rawMessages)
+  const data = rawMessages.map((m) =>
+    shapeMessage(m, m.reply_to_message_id ? parents.get(m.reply_to_message_id) ?? null : null),
   )
 
   // Update last_read_at for the current member (best-effort)
@@ -275,17 +298,11 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ data: null, error: error?.message ?? 'Invio fallito' }, { status: 500 })
   }
 
-  // Fetch arricchito (author + reply_to embedded). Stesso shape della GET.
+  // Fetch arricchito (author + reply_to embedded). Stesso shape della GET:
+  // join semplice per author + fetch separato del parent reply.
   const { data: enriched } = await db
     .from('chat_messages')
-    .select(
-      `*,
-       author:members!chat_messages_author_id_fkey(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color),
-       reply_to:chat_messages!chat_messages_reply_to_message_id_fkey(
-         id, text, deleted_at,
-         author:members!chat_messages_author_id_fkey(id, name, color)
-       )`,
-    )
+    .select('*, author:members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
     .eq('id', message.id)
     .single()
 
@@ -310,9 +327,15 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     },
   }).catch((err) => console.error('emit chat_message failed:', err))
 
-  const shaped = enriched
-    ? shapeMessage(enriched as ChatMessage & { author: MemberPublic; reply_to?: RawReplyJoin })
-    : message
+  let shaped: ChatMessageWithAuthor | ChatMessage = message
+  if (enriched) {
+    const enrichedTyped = enriched as unknown as ChatMessage & { author: MemberPublic }
+    const parents = await fetchReplyParents(db, [enrichedTyped])
+    shaped = shapeMessage(
+      enrichedTyped,
+      enrichedTyped.reply_to_message_id ? parents.get(enrichedTyped.reply_to_message_id) ?? null : null,
+    )
+  }
 
   return NextResponse.json({ data: shaped, error: null }, { status: 201 })
 }
