@@ -8,6 +8,90 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-15 — Vista settimanale unificata: stato presenza sugli eventi (parte 1: schema DB)
+
+**Why**. La pagina Attività mostra oggi solo le attività ricorrenti
+(`activities`, settimanali per `day_of_week`). Gli eventi one-off
+(`events`, con `event_date`) vivono nel `/calendar`. La famiglia
+ragiona "questa settimana cosa c'è?" e vuole vedere entrambi in un
+posto solo, con la stessa interazione (Conferma / Salto / Modifico +
+nota) già esistente per le attività. Questa entry pone le fondamenta
+DB: API e UI seguiranno in PR separate.
+
+**What to apply on production**
+
+Già **applicata via MCP** sul progetto remoto `la-famiglia`
+(`syikumgxsfnoxrwrbste`) il 2026-05-15. Idempotente.
+
+Applica una migration:
+- `015_event_attendance_status.sql` — estende `event_participants` con
+  4 colonne: `status TEXT` (nullable; `CHECK IN
+  ('confirmed','skipped','modified')`), `modified_notes TEXT`,
+  `created_at`/`updated_at TIMESTAMPTZ DEFAULT now()`. Aggiunge index
+  parziale `idx_event_participants_member_responses (member_id, status)
+  WHERE status IS NOT NULL` per la query "tutte le mie risposte agli
+  eventi". Abilita RLS e crea `rls_defensive_select` (SELECT,
+  anon+authenticated) — `event_participants` finora era in
+  default-deny senza policy; serve la policy per ricevere
+  `postgres_changes`. Imposta `REPLICA IDENTITY FULL` e aggiunge
+  alla publication `supabase_realtime` (idempotente via DO block
+  guard su `pg_publication_tables`).
+
+**Decisione di design: estendere `event_participants` invece di
+creare `event_attendances`**. `event_participants` è già una
+row-per-member del giusto livello (UNIQUE `(event_id, member_id)`).
+Gli eventi sono one-off, non c'è un asse `week_start` da
+introdurre, quindi la semantica naturale di `event_participants`
+diventa "la relazione fra un membro e un evento, eventualmente con
+la sua risposta presenza". Evita una `event_attendances` parallela
+con FK ridondante.
+
+**Convivenza con le 11 righe esistenti**. Sono "roster" creati dal
+flusso attuale `POST /api/events { participant_ids }`. Restano in
+tabella con `status = NULL`, semanticamente "il membro è associato
+all'evento ma non ha ancora risposto". Niente backfill automatico:
+trasformare "in roster" in "confermato" sarebbe inventare un
+consenso mai dato dagli utenti. Le risposte future faranno UPSERT
+aggiornando lo `status`.
+
+**CHECK constraint e nullable**. `CHECK (status IN (...))` passa
+anche quando `status IS NULL` perché in SQL una CHECK fallisce solo
+su FALSE, non su NULL. Quindi `NOT NULL` è gestito separatamente —
+qui non lo metto per preservare le 11 righe esistenti senza
+backfill.
+
+**Verifica post-migration** (eseguita via MCP):
+- 4 colonne aggiunte ✓
+- Constraint `event_participants_status_check` presente ✓
+- Index `idx_event_participants_member_responses` creato (parziale) ✓
+- RLS attiva con policy `rls_defensive_select [SELECT/anon,authenticated]` ✓
+- `relreplident='f'` (FULL), in `supabase_realtime` ✓
+- 11 righe pre-esistenti tutte con `status=NULL` ✓
+- Advisor: `event_participants` rimosso dalla lista
+  `rls_enabled_no_policy` (era pre-esistente, fixato come effetto
+  collaterale corretto della nuova policy).
+
+**Note out-of-scope (da fixare in cleanup separato)**:
+- `event_participants.member_id` FK senza `ON DELETE CASCADE`,
+  divergente da `activity_weekly_attendances` che lo ha. Cambiarlo
+  richiede `DROP CONSTRAINT … ADD CONSTRAINT …` ed esula da questa
+  migration che aggiunge solo lo status flow.
+
+**Cosa segue** (PR separate):
+- `POST /api/events/:id/attendance` (mirror di
+  `/api/activities/:id/attendance`): UPSERT per `(event_id,
+  member_id)` con status + modified_notes.
+- Rivedere `POST /api/events { participant_ids }`: oggi inserisce
+  "roster". Decidere se mantenerlo come "pre-conferma" (status =
+  'confirmed') o dismetterlo del tutto (chi vuole risponde dalla
+  card nella pagina Attività).
+- Frontend: pagina Attività diventa vista settimanale unificata
+  (`activities` ricorrenti + `events` con `event_date` nella
+  settimana corrente, raggruppati per `day_of_week` derivato).
+  Calendario resta read-only (solo vista mensile).
+
+---
+
 ## 2026-05-15 — Mentions @utente (Fase 6.6, parte 1: schema DB)
 
 **Why**. Quality-of-life per le chat di gruppo grandi (e secondariamente
