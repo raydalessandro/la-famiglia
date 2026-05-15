@@ -8,6 +8,59 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-15 — Bookmark / salva post (Fase 6.4)
+
+**Why**. La nonna salva spesso ricette nei post per rileggerle e oggi
+deve scorrere indietro nel feed per recuperarle. Aggiungiamo l'icona
+segnalibro sotto ogni post e una pagina dedicata `/saved`.
+
+Questa entry copre **solo la migration SQL** — API routes e UI
+verranno in commit / PR separati per consentirne review atomica.
+
+**What to apply on production**
+
+Già **applicata via MCP** sul progetto remoto `la-famiglia`
+(`syikumgxsfnoxrwrbste`) il 2026-05-15. Nessun comando da rilanciare;
+`supabase db push` resta no-op se rieseguito (migration idempotente).
+
+Applica una migration:
+- `012_post_bookmarks.sql` — crea `post_bookmarks(id, post_id,
+  member_id, created_at)` con `UNIQUE(post_id, member_id)` (consente
+  toggle idempotente lato API), FK con `ON DELETE CASCADE` verso
+  `posts` e `members`, index `(member_id, created_at DESC)` per la
+  query principale "post salvati da X dal più recente". RLS abilitata
+  **senza policy SELECT pubblica** — pattern difensivo: anon/authenticated
+  leggono zero righe, il service_role bypassa e tutta la lettura
+  passa dalle API server-side che filtrano per utente autenticato.
+  Coerente con migration `008_rls_defensive.sql`.
+
+**Privacy**. I bookmark sono privati per disegno: nessun altro membro
+può vedere cosa hai salvato. Senza policy SELECT pubblica, anche un
+client che cercasse di leggere `post_bookmarks` direttamente con la
+anon key otterrebbe sempre 0 righe.
+
+**Realtime**. La tabella NON è aggiunta a `supabase_realtime`: l'azione
+salva/rimuovi è dell'utente sul suo device, nessun altro client deve
+vedere il cambiamento in real-time.
+
+**Verifica post-migration** (eseguita via MCP):
+- Tabella creata ✓
+- 3 index: `post_bookmarks_pkey`, `post_bookmarks_post_id_member_id_key`
+  (unique), `idx_post_bookmarks_member` ✓
+- 2 FK con CASCADE: `post_bookmarks_post_id_fkey`,
+  `post_bookmarks_member_id_fkey` ✓
+- `rowsecurity = true`, `pg_policies` count = 0 ✓
+- NON in `pg_publication_tables` per `supabase_realtime` ✓
+- Advisor Supabase: solo INFO `rls_enabled_no_policy`, atteso (stesso
+  pattern di `push_subscriptions`, `chat_group_members`, `sessions`,
+  ecc.).
+
+**API e UI**: rimangono da implementare in PR separate (vedi
+`HANDOFF.md` sez. 6.4 per spec). API previste:
+`POST /api/posts/:id/bookmark` (toggle), `GET /api/posts/bookmarked`.
+
+---
+
 ## 2026-05-14 — Reply citation + edit/elimina messaggio chat (Fase 6.2 + 6.3)
 
 **Why**. Due lamentele esplicite della famiglia durante l'uso reale della
