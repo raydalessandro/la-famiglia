@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useActivities } from '@/hooks/useActivities'
 import { useWeekEvents } from '@/hooks/useWeekEvents'
 import { useAuth } from '@/hooks/useAuth'
@@ -531,6 +531,109 @@ function AttendeeRow({
   )
 }
 
+// Striscia orizzontale dei 7 giorni della settimana corrente, sticky in
+// alto a /activities come bussola visiva. Stati per giorno:
+// - oggi: pill arancione piena con shadow (ancoraggio visivo principale).
+// - vuoto: opacita` ridotta (a colpo d'occhio capisci dove non c'e` nulla).
+// - dot giallo se almeno un'attivita` ricorrente in quel giorno.
+// - dot rosa se almeno un evento one-off.
+// - puntino pulsante in alto a destra se c'e` almeno un item su cui io
+//   non ho ancora dichiarato la mia presenza.
+// Tap su un giorno → smooth scroll alla sezione corrispondente con
+// offset per lo sticky header. Al mount, scroll orizzontale auto-centrato
+// su "oggi".
+type DayStripDay = {
+  day: number
+  short: string
+  dayNumber: number
+  hasActivity: boolean
+  hasEvent: boolean
+  needsResponse: boolean
+  isToday: boolean
+  isEmpty: boolean
+}
+
+function DayStrip({ days }: { days: DayStripDay[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const todayEl = scrollRef.current?.querySelector<HTMLElement>('[data-today="true"]')
+    todayEl?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  }, [])
+
+  return (
+    <div
+      ref={scrollRef}
+      className="flex gap-1.5 overflow-x-auto px-3 pb-3"
+      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+    >
+      <style>{`
+        div::-webkit-scrollbar { display: none; }
+        @keyframes day-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(1.15); }
+        }
+      `}</style>
+      {days.map((d) => {
+        const bgClass = d.isToday
+          ? 'bg-[#E8A838] border-[#E8A838]'
+          : d.isEmpty
+          ? 'bg-transparent border-white/5 opacity-50'
+          : 'bg-white/5 border-white/5'
+        const shortColor = d.isToday
+          ? 'text-[#1a1a2e]/80'
+          : d.isEmpty
+          ? 'text-white/30'
+          : 'text-white/60'
+        const numColor = d.isToday
+          ? 'text-[#1a1a2e]'
+          : d.isEmpty
+          ? 'text-white/30'
+          : 'text-white'
+
+        return (
+          <a
+            key={d.day}
+            href={`#day-${d.day}`}
+            data-today={d.isToday}
+            className={`shrink-0 flex flex-col items-center justify-center min-w-[58px] h-[72px] rounded-2xl border relative active:scale-95 transition-transform ${bgClass}`}
+            style={d.isToday ? { boxShadow: '0 8px 20px -8px rgba(232, 168, 56, 0.5)' } : undefined}
+          >
+            <span className={`text-[11px] font-medium uppercase tracking-wide ${shortColor}`}>
+              {d.short}
+            </span>
+            <span className={`text-[20px] font-bold leading-none mt-0.5 ${numColor}`}>
+              {d.dayNumber}
+            </span>
+            <div className="flex gap-1 mt-1.5 h-1">
+              {d.hasActivity && (
+                <span
+                  className="w-1 h-1 rounded-full"
+                  style={{ background: d.isToday ? 'rgba(26,26,46,0.6)' : '#E8A838' }}
+                />
+              )}
+              {d.hasEvent && (
+                <span
+                  className="w-1 h-1 rounded-full"
+                  style={{ background: d.isToday ? 'rgba(26,26,46,0.6)' : '#E85D75' }}
+                />
+              )}
+            </div>
+            {d.needsResponse && (
+              <span
+                className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
+                style={{
+                  background: d.isToday ? '#1a1a2e' : '#E8A838',
+                  animation: 'day-pulse 2s ease-in-out infinite',
+                }}
+              />
+            )}
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
 function FilterTab({
   label,
   active,
@@ -634,6 +737,40 @@ export default function ActivitiesPage() {
 
   const totalItems = Object.values(grouped).reduce((sum, list) => sum + list.length, 0)
 
+  // Metadati per la day-strip in cima. Tutto derivato da `grouped` +
+  // member?.id, nessuna fetch extra. Costruiamo la Date del lunedi`
+  // della settimana corrente in local time (no .toISOString() → evita
+  // off-by-one al cambio fuso orario).
+  const today = new Date()
+  const todayDow = today.getDay() === 0 ? 7 : today.getDay() // 1=Lun..7=Dom
+  const monday = new Date(today)
+  monday.setDate(today.getDate() - (todayDow - 1))
+  const dayShorts = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
+  const dayStripData: DayStripDay[] = DAY_ORDER.map((day, idx) => {
+    const items = grouped[day]
+    const d = new Date(monday)
+    d.setDate(monday.getDate() + idx)
+    const hasActivity = items.some((i) => i.kind === 'activity')
+    const hasEvent = items.some((i) => i.kind === 'event')
+    // "Necessita risposta" = almeno un item dove il membro corrente non
+    // ha ancora dichiarato lo stato. `event.attendances` e` opzionale
+    // sul type, fallback a [].
+    const needsResponse = !!member?.id && items.some((i) => {
+      const attendances = i.kind === 'activity' ? i.activity.attendances : (i.event.attendances ?? [])
+      return !attendances.find((a) => a.member_id === member.id)
+    })
+    return {
+      day,
+      short: dayShorts[idx],
+      dayNumber: d.getDate(),
+      hasActivity,
+      hasEvent,
+      needsResponse,
+      isToday: day === todayDow,
+      isEmpty: items.length === 0,
+    }
+  })
+
   const handleSetMyActivityStatus = async (id: string, status: AttendanceStatus) => {
     if (status === 'modified') {
       setModNotesOpen({ kind: 'activity', id })
@@ -675,6 +812,7 @@ export default function ActivitiesPage() {
             {new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}
           </span>
         </div>
+        <DayStrip days={dayStripData} />
         <div className="px-4 pb-3 flex gap-2">
           <FilterTab label="Tutti" active={filter === 'all'} onClick={() => setFilter('all')} tone="neutral" />
           <FilterTab label="📅 Eventi" active={filter === 'events'} onClick={() => setFilter('events')} tone="event" />
@@ -704,7 +842,7 @@ export default function ActivitiesPage() {
             const dayItems = grouped[day]
             if (dayItems.length === 0) return null
             return (
-              <section key={day}>
+              <section key={day} id={`day-${day}`} className="scroll-mt-[220px]">
                 <h2 className="text-[#E8A838] font-semibold text-sm mb-3 uppercase tracking-wider">
                   {DAYS_IT[idx]}
                 </h2>
