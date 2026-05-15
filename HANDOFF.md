@@ -56,7 +56,7 @@ da un device iOS, **prima cosa** chiedi all'utente di aprire il sito
 con `?debug=1`, fare uno screenshot della console + del tab Network e
 mandartelo. Risparmia ore di tentativi alla cieca.
 
-## Stato attuale (aggiornato 2026-05-14)
+## Stato attuale (aggiornato 2026-05-15)
 
 L'app è in produzione su Vercel. Funziona su iOS Safari, Android Chrome,
 Samsung Internet e desktop. Testata sui device della famiglia.
@@ -115,9 +115,48 @@ Samsung Internet e desktop. Testata sui device della famiglia.
   - Soft-delete server-side: il testo originale viene sostituito col
     placeholder PRIMA della risposta API (no leak via response manipulation).
   - Vedi PRODUCTION_CHANGELOG.md 2026-05-14 per dettagli ops.
+- **Fase 6.4** — Bookmark / salva post:
+  - Migration `012_post_bookmarks.sql` (RLS privata senza policy SELECT,
+    UNIQUE `(post_id, member_id)`).
+  - API `POST /api/posts/:id/bookmark` (toggle), `GET /api/posts/bookmarked`
+    (paginata). `PostWithDetails.bookmarked_by_me` esposto via
+    `buildPostWithDetails`.
+  - UI: icona segnalibro nel `<PostCard>` oro `#E8A838` quando attivo,
+    nuova pagina `/saved`, scorciatoia nell'header del feed.
+- **Fase 6.5** — Compleanni:
+  - Migration `013_member_birthdays.sql` (`members.birth_date DATE`
+    nullable + index parziale `extract(month|day from birth_date)`).
+  - API: `PATCH /api/members/:id` accetta `birth_date`, `GET /api/birthdays/today`,
+    `GET /api/cron/birthday-notifications` (Vercel Cron, auth via
+    `CRON_SECRET` env). `vercel.json` schedule `0 6 * * *` UTC.
+  - Catalog: evento `birthday` (push a tutti tranne il festeggiato).
+  - UI: date picker in Settings, banner oro "🎉 Oggi {nome} compie X
+    anni" in cima al feed.
+- **Fase 6.6** — Mention `@utente` persistenti:
+  - Migration `014_mentions.sql` (modello polimorfico
+    `source_type ∈ {'post','comment','chat_message'}`, RLS difensiva).
+  - Server: `lib/mentions.ts` (parseMentions/insertMentions/
+    deleteMentionsForSource), integrazione nei POST handler di posts,
+    comments, chat. Cleanup orfani in DELETE post.
+  - Catalog: evento `mention` (push diretta al menzionato).
+  - UI: `<MentionText>` renderer (`@nome` → `<MemberLink>` oro),
+    wired in PostCard, comment row, chat bubble.
+  - NON in scope (follow-up): autosuggest popup `@` nel composer.
+- **Vista settimanale unificata** (attività + eventi, parte 1+2 di 3):
+  - Migration `015_event_attendance_status.sql` estende
+    `event_participants` con `status` / `modified_notes` (mirror del
+    modello `activity_weekly_attendances`).
+  - API `POST /api/events/:id/attendance` (UPSERT per
+    `(event_id, member_id)`, mirror di
+    `/api/activities/:id/attendance`).
+  - UI: in lavorazione (la pagina Attività diventa vista settimanale
+    unificata con `activities` ricorrenti + `events` settimanali
+    raggruppati per `day_of_week` derivato; Calendario resta
+    read-only mensile).
 
-**Cosa NON è ancora stato fatto e dove sta**: vedi sezione **Fase 6**
-sotto (6.4–6.6).
+**Cosa NON è ancora stato fatto e dove sta**: vista settimanale
+unificata parte 3 (UI). I follow-up minori 6.7–6.13 (no DB) restano
+parcheggiati nelle sezioni più sotto.
 
 ## Convenzioni — leggi PRIMA di scrivere codice
 
@@ -292,146 +331,6 @@ va costruita lato lettura sopra entrambe le tabelle.
 **Default participants**: un'attività senza riga in `activity_participants`
 viene mostrata con TUTTI i membri attivi come partecipanti. Per restringere
 il roster, popolare esplicitamente la tabella.
-
----
-
-# Fase 6 — Da fare (richiede modifiche al DB)
-
-Tutte queste feature sono state proposte all'utente, **approvate in
-linea di principio** e parcheggiate qui perché richiedono migration SQL
-nuova. La preferenza dell'utente è di farle da PC con Claude Code, una
-per volta. Ognuna è atomica: può essere fatta da sola.
-
-Per ogni voce: cosa fare, perché serve, SQL pronto, API da aggiungere,
-UI da costruire, stima impatto.
-
----
-
-## 6.4 — Bookmark / salva post (priorità: bassa)
-
-**Cosa**. Icona segnalibro sotto ogni post. Pagina dedicata `/saved` con i
-post salvati dall'utente corrente.
-
-**Perché**. La nonna salva spesso ricette per rileggerle. Oggi deve
-scorrere indietro nel feed.
-
-**Schema SQL** (file `012_post_bookmarks.sql`):
-
-```sql
-CREATE TABLE IF NOT EXISTS post_bookmarks (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id     UUID REFERENCES posts(id) ON DELETE CASCADE NOT NULL,
-  member_id   UUID REFERENCES members(id) ON DELETE CASCADE NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(post_id, member_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_post_bookmarks_member
-  ON post_bookmarks(member_id, created_at DESC);
-
-ALTER TABLE post_bookmarks ENABLE ROW LEVEL SECURITY;
--- Niente policy SELECT pubblica: i bookmark sono privati. Service role
--- via API gestisce tutto.
-
--- Realtime non necessaria (l'azione è dell'utente stesso).
-```
-
-**API**.
-- `POST /api/posts/:id/bookmark` — toggle (idempotent: 201 created o 200
-  removed)
-- `GET /api/posts/bookmarked?page=…` — lista dei post salvati dall'utente
-
-**UI**.
-- Icona segnalibro nel `<PostCard>` (vicino al cuore).
-- Nuova route `/saved` con grid identica a `/feed` ma filtrata.
-- Voce "Salvati" nella BottomNav o nel menu profilo (decidere con utente).
-
-**Stima**: 1 sessione (~2h).
-
----
-
-## 6.5 — Compleanni (priorità: media, stagionale)
-
-**Cosa**. Aggiungere data di nascita ai membri. Notifica push + banner sul
-feed il giorno del compleanno di un membro.
-
-**Perché**. La famiglia ha dimenticato il compleanno di una zia.
-
-**Schema SQL** (file `013_member_birthdays.sql`):
-
-```sql
-ALTER TABLE members
-  ADD COLUMN IF NOT EXISTS birth_date DATE;
-
-CREATE INDEX IF NOT EXISTS idx_members_birthday
-  ON members ((to_char(birth_date, 'MM-DD')))
-  WHERE birth_date IS NOT NULL;
-```
-
-**API**.
-- `PATCH /api/auth/members/:id` — accetta `birth_date?` opzionale (solo
-  self o admin)
-- `GET /api/birthdays/today` — ritorna i membri con compleanno oggi
-
-**Cron / trigger**.
-- Vercel Cron giornaliero alle 08:00 chiama `/api/cron/birthday-notifications`
-  che invia push notification ai membri quando c'è un compleanno.
-- Configurazione in `vercel.json` (creare il file se non esiste).
-
-**UI**.
-- Settings: campo "Data di nascita" (date picker IT).
-- Feed: banner in cima il giorno del compleanno: "🎉 Oggi Marco compie X
-  anni. Auguri!" — tap apre la chat con Marco (se direct chat esiste).
-
-**Stima**: 1.5 sessioni — il cron è la parte nuova rispetto al resto del
-progetto, richiede setup Vercel.
-
----
-
-## 6.6 — Mention @utente persistente (priorità: bassa)
-
-**Cosa**. Scrivere `@` in un post/commento/messaggio chat → autosuggest
-membri. La mention diventa un link cliccabile + genera notifica push.
-
-**Perché**. Quality-of-life per chat di gruppo grandi. La nonna non ha
-chiesto specificamente questo.
-
-**Schema SQL** (file `014_mentions.sql`):
-
-```sql
-CREATE TABLE IF NOT EXISTS mentions (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  source_type     TEXT NOT NULL CHECK (source_type IN ('post','comment','chat_message')),
-  source_id       UUID NOT NULL,
-  mentioned_id    UUID REFERENCES members(id) ON DELETE CASCADE NOT NULL,
-  author_id       UUID REFERENCES members(id) ON DELETE CASCADE NOT NULL,
-  created_at      TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_mentions_source
-  ON mentions(source_type, source_id);
-CREATE INDEX IF NOT EXISTS idx_mentions_mentioned
-  ON mentions(mentioned_id, created_at DESC);
-
-ALTER TABLE mentions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "rls_defensive_select" ON mentions FOR SELECT TO anon, authenticated USING (true);
-ALTER TABLE mentions REPLICA IDENTITY FULL;
-ALTER PUBLICATION supabase_realtime ADD TABLE mentions;
-```
-
-**Implementazione**.
-- Parser lato server (in `POST /api/posts`, `POST /api/posts/:id/comments`,
-  `POST /api/chat/groups/:id/messages`) che estrae `@nome` dal testo e
-  fa match contro `members.name`. Per ogni match → INSERT in `mentions`
-  + push notification.
-- Client: textarea con `@` trigger → BottomSheet con lista membri filtrata.
-- Render: parser nel client che trasforma `@nome` in `<MemberLink>`.
-
-**Attenzione**: implementazione non triviale perché tocca parsing testo.
-È la più complessa di Fase 6. Considerare se la famiglia la userebbe
-davvero prima di farla.
-
-**Stima**: 2 sessioni.
 
 ---
 

@@ -414,7 +414,12 @@ describe('GET /api/activities', () => {
     // Override the default `members` branch on top of the factory so this
     // single test can return a real roster without touching other tests.
     const originalFrom = db.from as ReturnType<typeof vi.fn>
-    const baseImpl = originalFrom.getMockImplementation()
+    // Cast esplicito: in vitest 4 il return type di
+    // getMockImplementation è una Procedure non chiamabile
+    // direttamente. La nostra impl è `(table: string) => unknown`.
+    const baseImpl = originalFrom.getMockImplementation() as
+      | ((table: string) => unknown)
+      | undefined
     originalFrom.mockImplementation((table: string) => {
       if (table === 'members') {
         const inner: Record<string, (...args: unknown[]) => unknown> = {}
@@ -458,7 +463,12 @@ describe('GET /api/activities', () => {
       statusSelect: { data: [], error: null },
     })
     const originalFrom = db.from as ReturnType<typeof vi.fn>
-    const baseImpl = originalFrom.getMockImplementation()
+    // Cast esplicito: in vitest 4 il return type di
+    // getMockImplementation è una Procedure non chiamabile
+    // direttamente. La nostra impl è `(table: string) => unknown`.
+    const baseImpl = originalFrom.getMockImplementation() as
+      | ((table: string) => unknown)
+      | undefined
     originalFrom.mockImplementation((table: string) => {
       if (table === 'members') {
         const inner: Record<string, (...args: unknown[]) => unknown> = {}

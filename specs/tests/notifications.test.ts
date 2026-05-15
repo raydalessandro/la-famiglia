@@ -316,11 +316,11 @@ describe('notifyMembers', () => {
     })
     mockSendNotification.mockResolvedValue(undefined)
 
-    await notifyMembers(['m-1', 'm-2'], 'comment', 'Titolo', 'Body', '/post/1')
+    await notifyMembers(['m-1', 'm-2'], 'new_comment', 'Titolo', 'Body', '/post/1')
 
     expect(insertCalls).toHaveLength(2)
     expect(insertCalls[0]).toMatchObject({
-      type: 'comment',
+      type: 'new_comment',
       title: 'Titolo',
       body: 'Body',
       link: '/post/1',
@@ -336,7 +336,7 @@ describe('notifyMembers', () => {
 
     // Non deve throw — gli errori per-member vanno catturati dentro
     await expect(
-      notifyMembers(['m-1', 'm-2'], 'comment', 'T', 'B')
+      notifyMembers(['m-1', 'm-2'], 'new_comment', 'T', 'B')
     ).resolves.toBeUndefined()
   })
 })

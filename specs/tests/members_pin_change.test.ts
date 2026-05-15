@@ -58,6 +58,15 @@ vi.mock('@/lib/auth', () => ({
     const { pin_hash, notify_push, notify_telegram, telegram_chat_id, created_at, updated_at, ...pub } = m
     return pub
   }),
+  // toSelfMember è stato introdotto per la regression del toggle
+  // notify_push (vedi lib/auth.ts). La route PATCH lo usa come
+  // payload di risposta per self/admin: serve mockarlo anche qui
+  // sennò il route lancia "No toSelfMember export". Restituisce un
+  // superset di toPublicMember che include i flag privati.
+  toSelfMember: vi.fn((m: Record<string, unknown>) => {
+    const { pin_hash, created_at, updated_at, ...rest } = m
+    return rest
+  }),
 }))
 
 const mockUpdate = vi.fn()
@@ -213,14 +222,20 @@ describe('PATCH /api/members/:id — PIN change', () => {
   })
 
   describe('Response shape (L0.5)', () => {
-    it('returns MemberPublic without pin_hash', async () => {
+    it('returns MemberSelf for self (with preferences, NO pin_hash)', async () => {
+      // Dal fix del 11/05 sul toggle notify_push, la PATCH /api/members/:id
+      // ritorna MemberSelf (con notify_push, notify_telegram,
+      // telegram_chat_id) quando il caller è self o admin. È
+      // intenzionale: Settings re-fetcha questo payload e ha bisogno
+      // dei flag per popolare i toggle. Niente pin_hash mai.
       const req = makeRequest({ bio: 'updated' })
       const res = await PATCH(req as any, makeRouteContext('user-1'))
       const body = await res.json()
 
       expect(body.data).not.toHaveProperty('pin_hash')
-      expect(body.data).not.toHaveProperty('notify_push')
-      expect(body.data).not.toHaveProperty('telegram_chat_id')
+      expect(body.data).toHaveProperty('notify_push')
+      expect(body.data).toHaveProperty('notify_telegram')
+      expect(body.data).toHaveProperty('telegram_chat_id')
       expect(body.data).toHaveProperty('name')
       expect(body.data).toHaveProperty('id')
     })

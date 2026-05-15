@@ -7,16 +7,23 @@ tecnico, target di tap minimo 44px, body 17px.
 ## Aree dell'app
 
 - **Bacheca** (`/feed`) — post (foto, ricette, storie), like, reazioni
-  (❤️ 😄 👏), commenti, lightbox foto, pagina post singolo
-  `/feed/[id]`.
+  (❤️ 😄 👏), commenti, sondaggi, bookmark privato, lightbox foto,
+  pagina post singolo `/feed/[id]`, banner compleanno.
+- **Salvati** (`/saved`) — lista dei post che hai bookmark-ato.
 - **Attività** (`/activities`) — eventi ricorrenti settimanali con
-  presenze per membro.
+  presenze per membro. In evoluzione verso vista settimanale unificata
+  che include anche gli eventi one-shot.
 - **Agenda** (`/calendar`) — eventi one-shot.
 - **Compiti** (`/tasks`) — to-do con assegnatari.
-- **Chat** (`/chat`, `/chat/[id]`) — dirette + gruppi, cluster WhatsApp.
+- **Chat** (`/chat`, `/chat/[id]`) — dirette + gruppi, cluster WhatsApp,
+  reply citation, edit/elimina entro 2 minuti, mention `@utente`.
 - **Famiglia** (`/family`, `/family/[id]`) — lista membri + profilo
-  arricchito.
+  arricchito (compleanno, stat, griglia post).
 - **Album** (`/albums`, `/albums/[id]`) — gallerie foto.
+- **Notifiche** — push (Web Push + VAPID, PWA-only su iOS) + Telegram
+  opzionali. Pattern centrale in `src/lib/notification-events.ts`
+  (registry tipato di eventi). Cron giornaliero per compleanni
+  (`vercel.json`, env `CRON_SECRET`).
 
 ## Stack
 

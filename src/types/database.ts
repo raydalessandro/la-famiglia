@@ -27,6 +27,19 @@ export type MemberPublic = {
   is_admin: boolean
   is_active: boolean
   color: string
+  // `birth_date` è pubblica per disegno (vedi changelog Fase 6.5,
+  // 2026-05-15): tutti i membri vedono i compleanni di tutti come
+  // parte normale del profilo. Stesso modello di `name`, `bio`, ecc.
+  // L'INSERT/UPDATE resta gated su self/admin via NON_ADMIN_ALLOWED_FIELDS
+  // nella route PATCH /api/members/:id.
+  //
+  // Marcato OPZIONALE perché molti payload preesistenti (e fixture di
+  // test) costruivano MemberPublic prima di Fase 6.5 e quindi non lo
+  // includono. Renderlo required forzerebbe una cascata di update senza
+  // beneficio funzionale: i consumer che mostrano il compleanno (es.
+  // pagina profilo, banner feed) leggono comunque il valore quando
+  // presente, gli altri lo ignorano.
+  birth_date?: string | null
 }
 
 /**
@@ -41,7 +54,6 @@ export type MemberSelf = MemberPublic & {
   notify_push: boolean
   notify_telegram: boolean
   telegram_chat_id: string | null
-  birth_date: string | null
 }
 
 /**

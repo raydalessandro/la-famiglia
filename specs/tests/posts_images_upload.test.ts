@@ -68,6 +68,11 @@ describe('createServerClient — key selection', () => {
   })
 
   it('browser client always uses anon key (never service_role)', async () => {
+    // Dopo PR #30 (commit 7735daa) il client browser vive in un file
+    // separato (`./browser.ts`) ed è lazy: viene istanziato solo
+    // chiamando `getSupabase()`. Il vecchio test importava
+    // `./client.ts` aspettandosi che il browser client venisse creato
+    // al module-load — non è più così.
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://localhost:54321'
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key'
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key'
@@ -77,14 +82,13 @@ describe('createServerClient — key selection', () => {
       createClient: mockCreateClient,
     }))
 
-    // Import triggers module-level `supabase` creation
-    await import('../../src/lib/supabase/client')
+    const { getSupabase } = await import('../../src/lib/supabase/browser')
+    getSupabase()
 
-    // First call is the browser client (module-level)
-    expect(mockCreateClient.mock.calls[0]).toEqual([
+    expect(mockCreateClient).toHaveBeenCalledWith(
       'http://localhost:54321',
-      'anon-key'
-    ])
+      'anon-key', // non service-role-key, nonostante sia presente in env
+    )
   })
 })
 
