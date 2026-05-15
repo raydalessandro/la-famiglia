@@ -220,26 +220,26 @@ export default function FeedPage() {
 
   return (
     <div className="min-h-screen bg-[#1a1a2e] pb-24">
-      {/* Header */}
-      <div className="sticky top-0 z-30 bg-[#1a1a2e]/90 backdrop-blur border-b border-white/5">
-        <div className="flex items-center justify-between px-4 py-4">
-          <h1 className="text-xl font-bold text-white">Feed</h1>
-          <div className="flex items-center gap-3">
-            {/* Scorciatoia ai post salvati. Tap → /saved (pagina dedicata
-             * con grid identica al feed ma filtrata sui bookmark di chi
-             * guarda). Icona segnalibro outline — pattern Instagram. */}
-            <button
-              type="button"
-              onClick={() => router.push('/saved')}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-[#E8A838] hover:bg-white/10 transition-colors"
-              aria-label="Apri post salvati"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z" />
-              </svg>
-            </button>
-            <span className="text-2xl">🏡</span>
-          </div>
+      {/* Header — display title "La Famiglia" in serif italic light per
+          dare identita` tipo Instagram/Threads (la pagina principale
+          parla il nome del prodotto, non l'etichetta della sezione).
+          Niente border-bottom: l'header fluisce nel contenuto. Una sola
+          icona azione (segnalibro per /saved) thin-stroke. */}
+      <div className="sticky top-0 z-30 bg-[#1a1a2e]/95 backdrop-blur">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h1 className="font-serif italic font-light text-white text-[26px] leading-none tracking-tight">
+            La Famiglia
+          </h1>
+          <button
+            type="button"
+            onClick={() => router.push('/saved')}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:text-[#E8A838] hover:bg-white/5 transition-colors"
+            aria-label="Apri post salvati"
+          >
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z" />
+            </svg>
+          </button>
         </div>
       </div>
 
