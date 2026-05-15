@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
 import { usePushSubscription } from '@/hooks/usePushSubscription'
 import { Avatar, Button, useToast } from '@/components/ui'
+import { compressImage } from '@/lib/storage'
 
 const EMOJI_OPTIONS = [
   '😊','😎','🥳','🤩','😴','🧑','👩','👨','🧒','👧','👦',
@@ -20,6 +21,11 @@ export default function SettingsPage() {
 
   const [bio, setBio] = useState(member?.bio ?? '')
   const [avatarEmoji, setAvatarEmoji] = useState(member?.avatar_emoji ?? '')
+  // Local mirror di member.avatar_url per riflettere subito l'esito di
+  // upload / rimozione foto senza aspettare il refresh di useAuth.
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(member?.avatar_url ?? null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 
   const [currentPin, setCurrentPin] = useState('')
@@ -49,6 +55,7 @@ export default function SettingsPage() {
     if (!member) return
     setBio(member.bio ?? '')
     setAvatarEmoji(member.avatar_emoji ?? '')
+    setAvatarUrl(member.avatar_url ?? null)
 
     // Fetch full member (includes notify_push, notify_telegram, telegram_chat_id)
     fetch(`/api/members/${member.id}`)
@@ -140,6 +147,68 @@ export default function SettingsPage() {
     }
   }
 
+  // Upload foto profilo: compressione client-side (max 512px, q 0.85),
+  // POST multipart all'endpoint dedicato. La preview si aggiorna subito
+  // grazie ad `avatarUrl` locale; in parallelo refresh-iamo useAuth /
+  // useMembers per sincronizzare il resto della UI (header con avatar,
+  // chat rows, ecc.).
+  const handleAvatarUpload = async (file: File) => {
+    if (!member) return
+    setUploadingPhoto(true)
+    try {
+      const compressed = await compressImage(file, 512, 0.85)
+      const fd = new FormData()
+      fd.append('file', compressed)
+      const res = await fetch(`/api/members/${member.id}/avatar`, {
+        method: 'POST',
+        body: fd,
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.data) {
+        toast.error(result.error ?? 'Upload fallito')
+        return
+      }
+      setAvatarUrl(result.data.avatar_url ?? null)
+      await refreshAuth()
+      await refetch()
+      toast.success('Foto profilo aggiornata')
+      setShowEmojiPicker(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Errore nel caricamento')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
+  // Rimozione foto: PATCH con avatar_url=null. L'endpoint esistente
+  // accetta gia` il campo per i non-admin (NON_ADMIN_ALLOWED_FIELDS).
+  // Non cancella il file dal bucket (cleanup non urgente; spazio
+  // negligible per use case familiare).
+  const handleAvatarRemove = async () => {
+    if (!member) return
+    setUploadingPhoto(true)
+    try {
+      const res = await fetch(`/api/members/${member.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar_url: null }),
+      })
+      if (!res.ok) {
+        const result = await res.json().catch(() => ({}))
+        toast.error(result.error ?? 'Rimozione fallita')
+        return
+      }
+      setAvatarUrl(null)
+      await refreshAuth()
+      await refetch()
+      toast.success('Foto profilo rimossa')
+    } catch {
+      toast.error('Errore di rete')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
   const handleLogout = async () => {
     setLoggingOut(true)
     await logout()
@@ -155,25 +224,45 @@ export default function SettingsPage() {
 
       <div className="px-4 py-5 space-y-6 pb-28">
 
+        {/* Hidden file input — triggerato dal pulsante "Carica foto" nel
+            picker sotto. accept="image/*" su mobile apre la scelta nativa
+            tra fotocamera e galleria; lasciamo decidere al SO. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) handleAvatarUpload(f)
+            // Reset cosi` lo stesso file puo` essere ricaricato dopo un errore.
+            e.target.value = ''
+          }}
+        />
+
         {/* Profile preview */}
         <div className="flex items-center gap-4 rounded-2xl bg-white/5 p-4">
           <div
             className="relative cursor-pointer"
             onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            aria-label="Cambia emoji avatar"
+            aria-label="Cambia avatar"
           >
             <Avatar
               emoji={avatarEmoji || member.avatar_emoji}
-              url={member.avatar_url}
+              url={avatarUrl}
               name={member.name}
               size="lg"
               color={member.color}
             />
             <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e]">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
+              {uploadingPhoto ? (
+                <div className="h-3 w-3 rounded-full border-2 border-[#1a1a2e] border-t-transparent animate-spin" />
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              )}
             </div>
           </div>
           <div>
@@ -189,34 +278,76 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Emoji picker */}
+        {/* Avatar picker — foto profilo + griglia emoji come fallback.
+            La foto ha precedenza sull'emoji nel componente Avatar, quindi
+            la sezione foto vive in alto per comunicare la strada
+            preferita. */}
         {showEmojiPicker && (
-          <div className="rounded-2xl bg-white/5 p-4">
-            <p className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">
-              Scegli emoji avatar
-            </p>
-            <div className="grid grid-cols-8 gap-2">
-              {EMOJI_OPTIONS.map((emoji) => (
+          <div className="rounded-2xl bg-white/5 p-4 space-y-4">
+            {/* Sezione foto profilo */}
+            <div>
+              <p className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">
+                Foto profilo
+              </p>
+              <div className="flex flex-wrap gap-2">
                 <button
-                  key={emoji}
                   type="button"
-                  onClick={() => { setAvatarEmoji(emoji); setShowEmojiPicker(false) }}
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-xl transition-all ${
-                    avatarEmoji === emoji
-                      ? 'ring-2 ring-[#E8A838] bg-[#E8A838]/20 scale-110'
-                      : 'hover:bg-white/10'
-                  }`}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  className="flex items-center gap-2 rounded-xl bg-[#E8A838]/15 px-3 py-2 text-xs font-medium text-[#E8A838] hover:bg-[#E8A838]/25 transition-colors disabled:opacity-50"
                 >
-                  {emoji}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+                    <circle cx="12" cy="13" r="3" />
+                  </svg>
+                  {uploadingPhoto ? 'Caricamento…' : avatarUrl ? 'Cambia foto' : 'Carica foto'}
                 </button>
-              ))}
+                {avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={handleAvatarRemove}
+                    disabled={uploadingPhoto}
+                    className="rounded-xl bg-white/5 px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    Rimuovi foto
+                  </button>
+                )}
+              </div>
+              <p className="mt-2 text-[11px] leading-snug text-white/40">
+                JPEG, PNG o WebP — la foto viene ridimensionata automaticamente.
+              </p>
             </div>
-            <button
-              onClick={() => { setAvatarEmoji(''); setShowEmojiPicker(false) }}
-              className="mt-3 text-xs text-white/40 hover:text-white/70 underline"
-            >
-              Rimuovi emoji
-            </button>
+
+            {/* Separatore + sezione emoji come fallback */}
+            <div className="h-px bg-white/5" />
+
+            <div>
+              <p className="text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">
+                {avatarUrl ? 'Oppure scegli un\'emoji' : 'Scegli emoji avatar'}
+              </p>
+              <div className="grid grid-cols-8 gap-2">
+                {EMOJI_OPTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => { setAvatarEmoji(emoji); setShowEmojiPicker(false) }}
+                    className={`flex h-9 w-9 items-center justify-center rounded-lg text-xl transition-all ${
+                      avatarEmoji === emoji
+                        ? 'ring-2 ring-[#E8A838] bg-[#E8A838]/20 scale-110'
+                        : 'hover:bg-white/10'
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setAvatarEmoji(''); setShowEmojiPicker(false) }}
+                className="mt-3 text-xs text-white/40 hover:text-white/70 underline"
+              >
+                Rimuovi emoji
+              </button>
+            </div>
           </div>
         )}
 
