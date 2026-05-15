@@ -8,6 +8,65 @@ Format: newest first. Each entry says what to run and where.
 
 ---
 
+## 2026-05-15 — Mentions @utente (Fase 6.6, parte 1: schema DB)
+
+**Why**. Quality-of-life per le chat di gruppo grandi (e secondariamente
+per post / commenti): scrivere `@nome` → la mention diventa link al
+profilo + push notification al menzionato. Foundation persistente per
+poter mostrare anche un futuro feed "le mention che ti riguardano".
+
+Questa entry copre **solo la migration SQL**. Parser server-side
+(post / commenti / chat), autosuggest BottomSheet, renderer client e
+push verranno in PR separate.
+
+**What to apply on production**
+
+Già **applicata via MCP** sul progetto remoto `la-famiglia`
+(`syikumgxsfnoxrwrbste`) il 2026-05-15. Idempotente.
+
+Applica una migration:
+- `014_mentions.sql` — crea `mentions(id, source_type, source_id,
+  mentioned_id, author_id, created_at)`.
+  - `source_type` ∈ {`'post'`,`'comment'`,`'chat_message'`}
+    (CHECK constraint).
+  - `source_id` è UUID **senza FK** — polymorphic association:
+    punta a una di 3 tabelle diverse a seconda di `source_type` e
+    Postgres non supporta polymorphic FK in una singola constraint.
+    Cleanup delle mention orfane gestito lato API DELETE del source
+    (coerente con il pattern del progetto: business logic nel
+    service_role, niente trigger).
+  - `mentioned_id` e `author_id` con FK su `members(id)`
+    `ON DELETE CASCADE`.
+  - 2 index: `(source_type, source_id)` per "tutte le mention dentro
+    questo post/commento/messaggio", `(mentioned_id, created_at DESC)`
+    per "tutte le mention che riguardano me, dalla più recente".
+  - RLS abilitata + policy `rls_defensive_select` per anon/authenticated
+    (necessaria per consentire `postgres_changes` realtime, stesso
+    pattern di `008` e `009`). Niente policy INSERT/UPDATE/DELETE.
+  - `REPLICA IDENTITY FULL` + aggiunta a `supabase_realtime`
+    publication, così il client riceve il payload completo
+    dell'evento (mentioned_id, author_id, ecc.).
+
+**Verifica post-migration** (eseguita via MCP):
+- Tabella creata, 0 righe ✓
+- Policy `rls_defensive_select [SELECT/anon,authenticated]` presente ✓
+- 3 index: pkey, `idx_mentions_source`, `idx_mentions_mentioned` ✓
+- 4 constraint: 2 FK + pkey + CHECK su `source_type` ✓
+- `in_realtime_pub = 1`, `relreplident = 'f'` (FULL) ✓
+- Advisor: nessuna entry nuova, nessuna regressione.
+
+**API e UI**: rimangono da implementare in PR separate (vedi
+`HANDOFF.md` sez. 6.6 per spec). Punti chiave:
+- Parser server-side dentro `POST /api/posts`,
+  `POST /api/posts/:id/comments`,
+  `POST /api/chat/groups/:id/messages` — estrae `@nome`, match
+  contro `members.name`, INSERT in `mentions` + push.
+- Cleanup delle mention orfane nei DELETE di post/comment.
+- Client: textarea con `@` trigger → BottomSheet autosuggest.
+- Render: `@nome` → `<MemberLink>`.
+
+---
+
 ## 2026-05-15 — Compleanni membri (Fase 6.5, parte 1: schema DB)
 
 **Why**. La famiglia ha dimenticato il compleanno di una zia, e
