@@ -46,7 +46,7 @@ export function AppLauncher() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-10 w-10 items-center justify-center rounded-full text-[#E8A838]/80 transition-colors hover:bg-white/10 hover:text-[#E8A838] active:bg-white/15"
+        className="flex h-10 w-10 items-center justify-center rounded-full text-[#0F0F0F]/75 transition-colors hover:bg-black/5 hover:text-[#0F0F0F]"
         aria-label="Apri le altre app di famiglia"
         aria-haspopup="dialog"
         aria-expanded={open}
