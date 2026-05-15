@@ -29,6 +29,7 @@ const MEMBER_FULL: Member = {
   notify_push: true,
   notify_telegram: false,
   telegram_chat_id: null,
+  birth_date: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }
@@ -404,6 +405,10 @@ describe('2. Unit — crypto and data transformation', () => {
       const expected = [
         'id', 'name', 'avatar_emoji', 'avatar_url',
         'family_role', 'bio', 'is_admin', 'is_active', 'color',
+        // `birth_date` è ora pubblico (vedi MemberPublic in database.ts +
+        // changelog Fase 6.5): tutti i membri vedono i compleanni
+        // di tutti come parte normale del profilo.
+        'birth_date',
       ].sort()
       expect(keys).toEqual(expected)
     })

@@ -30,8 +30,17 @@ describe('Root layout — App Router conventions', () => {
   it('does NOT contain a manual <head> tag', () => {
     // Next.js App Router manages <head> automatically.
     // A manual <head> causes CSS hydration issues and stale bundle references.
-    expect(content).not.toMatch(/<head>/)
-    expect(content).not.toMatch(/<head\s/)
+    //
+    // Stripperiamo i commenti prima del check: il file usa la stringa
+    // "<head>" all'interno di un commento JSDoc multi-line per
+    // spiegare PERCHÉ NON c'è il tag, e quel testo non deve falsare
+    // l'assertion. Strippiamo block comments `/* … */` e line
+    // comments `// …` prima di cercare il tag.
+    const stripped = content
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '')
+    expect(stripped).not.toMatch(/<head>/)
+    expect(stripped).not.toMatch(/<head\s/)
   })
 
   it('imports globals.css', () => {

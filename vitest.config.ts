@@ -19,6 +19,14 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key',
       SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
+      // VAPID env stub: `lib/notifications.ts` ora legge le env in
+      // modo lazy (`readVapidConfig`) e ritorna null se anche una
+      // delle due manca → `sendPushNotification` esce con false senza
+      // chiamare webpush. I test mockano `web-push` direttamente
+      // quindi questi valori non vengono mai mandati a un servizio
+      // reale — servono solo a passare il check di presenza lazy.
+      VAPID_PUBLIC_KEY: 'test-vapid-public',
+      VAPID_PRIVATE_KEY: 'test-vapid-private',
     },
     // Per-file environment overrides are declared via the
     // `// @vitest-environment node` docblock at the top of each test file
