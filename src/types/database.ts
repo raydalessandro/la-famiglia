@@ -12,6 +12,7 @@ export type Member = {
   notify_push: boolean
   notify_telegram: boolean
   telegram_chat_id: string | null
+  birth_date: string | null
   created_at: string
   updated_at: string
 }
@@ -40,6 +41,17 @@ export type MemberSelf = MemberPublic & {
   notify_push: boolean
   notify_telegram: boolean
   telegram_chat_id: string | null
+  birth_date: string | null
+}
+
+/**
+ * Riga ritornata da `GET /api/birthdays/today` — un member pubblico
+ * con la data di nascita inline + l'età che compie oggi (calcolata
+ * lato server per evitare drift con il timezone del client).
+ */
+export type BirthdayToday = MemberPublic & {
+  birth_date: string
+  age: number
 }
 
 export type Session = {
@@ -342,6 +354,7 @@ export type Notification = {
     | 'new_comment'
     | 'new_reaction'
     | 'chat_message'
+    | 'birthday'
   title: string
   body: string
   link: string | null
@@ -390,6 +403,9 @@ export type UpdateMemberInput = {
   notify_push?: boolean
   notify_telegram?: boolean
   telegram_chat_id?: string
+  // Formato ISO `YYYY-MM-DD`. `null` per cancellare (member non vuole
+  // più tenere la data registrata).
+  birth_date?: string | null
 }
 
 export type CreatePostInput = {

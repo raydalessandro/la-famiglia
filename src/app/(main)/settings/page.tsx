@@ -30,6 +30,9 @@ export default function SettingsPage() {
   const [notifyPush, setNotifyPush] = useState(false)
   const [notifyTelegram, setNotifyTelegram] = useState(false)
   const [telegramChatId, setTelegramChatId] = useState('')
+  // birth_date come stringa ISO YYYY-MM-DD oppure '' (campo vuoto).
+  // Il backend accetta `null` per cancellare; convertiamo qui sotto.
+  const [birthDate, setBirthDate] = useState('')
 
   const [saving, setSaving] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -55,6 +58,7 @@ export default function SettingsPage() {
           setNotifyPush(result.data.notify_push ?? false)
           setNotifyTelegram(result.data.notify_telegram ?? false)
           setTelegramChatId(result.data.telegram_chat_id ?? '')
+          setBirthDate(result.data.birth_date ?? '')
         }
       })
       .catch(() => {})
@@ -101,6 +105,9 @@ export default function SettingsPage() {
       notify_push: notifyPush,
       notify_telegram: notifyTelegram,
       telegram_chat_id: notifyTelegram ? telegramChatId.trim() || null : null,
+      // Stringa vuota dal form → null nel DB (rimuove la data). Il
+      // server valida che, se non null, sia ISO YYYY-MM-DD.
+      birth_date: birthDate.trim() || null,
     }
 
     if (currentPin && newPin) {
@@ -227,6 +234,29 @@ export default function SettingsPage() {
             className="w-full resize-none rounded-xl bg-white/10 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-[#E8A838]"
           />
           <p className="text-right text-[10px] text-white/30 mt-1">{bio.length}/300</p>
+        </div>
+
+        {/* Data di nascita — opzionale. Usato per il banner compleanno
+         * sul feed e per la push giornaliera. Lasciare vuoto per non
+         * comparire nei compleanni. */}
+        <div className="rounded-2xl bg-white/5 p-4">
+          <label htmlFor="birth-date" className="block text-xs font-semibold text-white/50 uppercase tracking-wide mb-3">
+            Data di nascita
+          </label>
+          <input
+            id="birth-date"
+            type="date"
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
+            // Limite: niente nascite future, niente prima del 1900
+            // (vincolo cosmetico: il date picker mostra anni più puliti).
+            min="1900-01-01"
+            max={new Date().toISOString().slice(0, 10)}
+            className="w-full rounded-xl bg-white/10 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-[#E8A838]"
+          />
+          <p className="mt-2 text-[11px] leading-snug text-white/40">
+            La useremo per ricordare il tuo compleanno alla famiglia. Lascia vuoto se preferisci di no.
+          </p>
         </div>
 
         {/* Change PIN */}

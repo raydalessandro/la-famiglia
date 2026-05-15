@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/setup', '/api/auth', '/api/setup']
+// `/api/cron` è pubblico al middleware perché chiamato da Vercel Cron
+// infrastructure senza cookie session. Ogni endpoint sotto /api/cron/*
+// è responsabile della propria autorizzazione via `Authorization: Bearer
+// <CRON_SECRET>` (vedi `/api/cron/birthday-notifications/route.ts`).
+const PUBLIC_PATHS = ['/login', '/setup', '/api/auth', '/api/setup', '/api/cron']
 const COOKIE_NAME = 'famiglia_session'
 
 // In-memory rate limiter — sufficient for a small family-scale app.
