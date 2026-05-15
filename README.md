@@ -10,10 +10,14 @@ tecnico, target di tap minimo 44px, body 17px.
   (❤️ 😄 👏), commenti, sondaggi, bookmark privato, lightbox foto,
   pagina post singolo `/feed/[id]`, banner compleanno.
 - **Salvati** (`/saved`) — lista dei post che hai bookmark-ato.
-- **Attività** (`/activities`) — eventi ricorrenti settimanali con
-  presenze per membro. In evoluzione verso vista settimanale unificata
-  che include anche gli eventi one-shot.
-- **Agenda** (`/calendar`) — eventi one-shot.
+- **Attività** (`/activities`) — vista settimanale unificata: attività
+  ricorrenti + eventi one-off della settimana corrente, raggruppati per
+  giorno. Conferma presenze (Confermo / Salto / Modifico + nota) per
+  entrambi i tipi. Tab filter Tutti / Eventi / Attività. Sheet di
+  creazione condivisa con toggle interno `<CreateItemSheet>`.
+- **Agenda** (`/calendar`) — calendario mensile, vista read-only sulla
+  presenza (la conferma avviene dalla pagina Attività). Stesso "+"
+  della pagina Attività per creare evento o attività.
 - **Compiti** (`/tasks`) — to-do con assegnatari.
 - **Chat** (`/chat`, `/chat/[id]`) — dirette + gruppi, cluster WhatsApp,
   reply citation, edit/elimina entro 2 minuti, mention `@utente`.
