@@ -40,6 +40,21 @@ export async function createNotificationRecord(
   return data as Notification
 }
 
+/**
+ * Helper di logging strutturato per il pipeline push. JSON su stdout
+ * così i log Vercel sono filtrabili per chiave. NON usare `console.log`
+ * libero qua dentro — passa da `pushLog` perché vogliamo poter
+ * rintracciare l'intera vita di una push (member + reason) nei log
+ * dopo un incident come quello del 2026-05-14 (subscription a 0 per
+ * cleanup 410).
+ */
+function pushLog(level: 'info' | 'warn' | 'error', message: string, fields: Record<string, unknown>) {
+  const entry = { level, scope: 'push', message, ...fields }
+  if (level === 'error') console.error(JSON.stringify(entry))
+  else if (level === 'warn') console.warn(JSON.stringify(entry))
+  else console.log(JSON.stringify(entry))
+}
+
 // Send a web-push notification to all active subscriptions for a member
 export async function sendPushNotification(
   memberId: string,
@@ -56,11 +71,18 @@ export async function sendPushNotification(
     .eq('member_id', memberId)
 
   if (subError) {
-    console.error('sendPushNotification: failed to fetch subscriptions', subError.message)
+    pushLog('error', 'fetch_subscriptions_failed', { memberId, error: subError.message })
     return false
   }
 
-  if (!subscriptions || subscriptions.length === 0) return false
+  const subCount = subscriptions?.length ?? 0
+  if (subCount === 0) {
+    // Caso critico: dopo il 2026-05-14 abbiamo scoperto che 0 subscription
+    // nel DB è uno stato comune (cleanup 410 dopo reinstall PWA) ma
+    // silenzioso. Logghiamo INFO così è visibile nei log Vercel.
+    pushLog('info', 'no_subscriptions_for_member', { memberId })
+    return false
+  }
 
   // Check member's push notification preference
   const { data: member, error: memberError } = await supabase
@@ -70,15 +92,20 @@ export async function sendPushNotification(
     .single()
 
   if (memberError || !member) {
-    console.error('sendPushNotification: failed to fetch member', memberError?.message)
+    pushLog('error', 'fetch_member_failed', { memberId, error: memberError?.message })
     return false
   }
 
-  if (!member.notify_push) return false
+  if (!member.notify_push) {
+    pushLog('info', 'push_disabled_by_pref', { memberId })
+    return false
+  }
 
   webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
 
   const payload = JSON.stringify({ title, body, link })
+  let sentCount = 0
+  let cleanedUp = 0
 
   for (const sub of subscriptions as PushSubscription[]) {
     const pushSub = {
@@ -91,8 +118,13 @@ export async function sendPushNotification(
 
     try {
       await webpush.sendNotification(pushSub, payload)
+      sentCount++
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode
+      // Endpoint truncato per non riempire i log con FCM URL completi.
+      const endpointHost = (() => {
+        try { return new URL(sub.endpoint).host } catch { return 'unknown' }
+      })()
       if (statusCode === 410 || statusCode === 404) {
         // Subscription is no longer valid — remove it
         await supabase
@@ -100,13 +132,36 @@ export async function sendPushNotification(
           .delete()
           .eq('member_id', memberId)
           .eq('endpoint', sub.endpoint)
+        cleanedUp++
+        pushLog('warn', 'subscription_cleanup', {
+          memberId,
+          endpointHost,
+          statusCode,
+          reason: 'web_push_returned_410_or_404',
+        })
       } else {
-        console.error('sendPushNotification: error sending to endpoint', sub.endpoint, err)
+        pushLog('error', 'send_failed', {
+          memberId,
+          endpointHost,
+          statusCode: statusCode ?? null,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
   }
 
-  return true
+  pushLog('info', 'send_summary', {
+    memberId,
+    subscriptionsAttempted: subCount,
+    sent: sentCount,
+    cleanedUp,
+  })
+
+  // Ritorna true solo se almeno una push è effettivamente partita. Prima
+  // ritornava true sempre — questo significava che `sent_push` veniva
+  // marcato true anche se TUTTE le subscription erano fallite con 410.
+  // Comportamento più onesto: sent_push riflette "almeno una è andata".
+  return sentCount > 0
 }
 
 // Send a Telegram message to a member via the Telegram Bot API

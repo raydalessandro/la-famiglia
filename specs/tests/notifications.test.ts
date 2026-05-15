@@ -204,10 +204,16 @@ describe('sendPushNotification', () => {
     })
   })
 
-  it('rimuove la subscription dal DB se il push service risponde 410 Gone', async () => {
+  it('rimuove la subscription dal DB se il push service risponde 410 Gone, e ritorna false', async () => {
     // Quando un browser disinstalla la PWA o revoca il permesso, il push
     // service segna l'endpoint come 410. Senza cleanup, lo stesso member
     // continuerebbe a fallire ad ogni notifica.
+    //
+    // Ritorna false perché NESSUNA push è effettivamente partita (l'unica
+    // subscription era morta). Prima ritornava true sempre: side effect
+    // era che `sent_push` veniva marcato true su notifications anche se
+    // tutte le push erano fallite — falso positivo che ha mascherato
+    // l'incident del 2026-05-14.
     setupSupabase({
       subscriptions: [SUBSCRIPTION],
       member: { notify_push: true },
@@ -218,13 +224,37 @@ describe('sendPushNotification', () => {
 
     const result = await sendPushNotification('m-1', 'T', 'B')
 
-    expect(result).toBe(true) // funzione completa OK, anche se la singola sub è morta
+    expect(result).toBe(false)
     expect(deleteCalls).toHaveLength(1)
     expect(deleteCalls[0].table).toBe('push_subscriptions')
     expect(deleteCalls[0].eqs).toEqual([
       ['member_id', 'm-1'],
       ['endpoint', SUBSCRIPTION.endpoint],
     ])
+  })
+
+  it('ritorna true se almeno una subscription riceve la push (mix successo/410)', async () => {
+    // Caso realistico: 1 device con PWA reinstallata (410), 1 device attivo.
+    // Vogliamo che `sent_push=true` sulla riga notifications: la notifica
+    // ha raggiunto almeno un device.
+    const SECOND_SUB = {
+      ...SUBSCRIPTION,
+      endpoint: 'https://fcm.googleapis.com/fcm/send/xyz',
+    }
+    setupSupabase({
+      subscriptions: [SUBSCRIPTION, SECOND_SUB],
+      member: { notify_push: true },
+    })
+    const goneErr = new Error('Gone')
+    ;(goneErr as unknown as { statusCode: number }).statusCode = 410
+    mockSendNotification
+      .mockRejectedValueOnce(goneErr)   // prima sub morta
+      .mockResolvedValueOnce(undefined) // seconda sub attiva → push OK
+
+    const result = await sendPushNotification('m-1', 'T', 'B')
+
+    expect(result).toBe(true)
+    expect(deleteCalls).toHaveLength(1) // solo la sub morta è stata pulita
   })
 
   it('rimuove la subscription anche su 404 Not Found', async () => {
