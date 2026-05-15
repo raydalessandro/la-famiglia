@@ -74,6 +74,23 @@ type PayloadByEvent = {
     member: { id: string; name: string }
     age: number
   }
+  /**
+   * `@menzione` di un membro dentro un post / commento / messaggio
+   * chat. Una sola push al menzionato (anche se l'autore lo
+   * menziona più volte nello stesso testo — dedupe in `parseMentions`).
+   */
+  mention: {
+    author: { id: string; name: string }
+    mentionedId: string
+    source: {
+      type: 'post' | 'comment' | 'chat_message'
+      // Deep link al sorgente (es. `/posts/abc`, `/chat/group-id`).
+      link: string
+      // Snippet del testo dove appare la mention (max ~100 char). Usato
+      // come body della push per dare contesto.
+      preview: string
+    }
+  }
 }
 
 export type NotificationEventKey = keyof PayloadByEvent
@@ -187,6 +204,19 @@ export const NOTIFICATION_EVENTS: Catalog = {
         .map((m) => m.id)
         .filter((id) => id !== p.member.id)
     },
+  },
+
+  mention: {
+    type: 'mention',
+    // Title: nome dell'autore + verbo. Stile WhatsApp/Slack: chi mi
+    // ha menzionato è la prima cosa che voglio vedere nel banner.
+    title: (p) => `${p.author.name} ti ha menzionato`,
+    body: (p) => p.source.preview,
+    link: (p) => p.source.link,
+    // Una sola mention → una sola riga in recipients. Il dedupe
+    // multi-mention dello stesso member nello stesso source vive in
+    // `parseMentions` (lib/mentions.ts).
+    recipients: async (p) => [p.mentionedId],
   },
 }
 
