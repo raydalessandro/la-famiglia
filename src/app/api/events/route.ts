@@ -28,13 +28,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: null, error: error.message }, { status: 500 })
   }
 
+  // Dalla migration 015 event_participants tiene anche status/modified_notes.
+  // `participants` resta in payload per back-compat (sola lista membri).
+  // `attendances` e` la nuova vista completa con stato di risposta, consumata
+  // dalla pagina Attivita` unificata che mostra confermati/saltati/modificati.
   const enriched = await Promise.all(
     (events ?? []).map(async (event) => {
-      const { data: participants } = await db
+      const { data: rows } = await db
         .from('event_participants')
-        .select('member_id, members(id, name, avatar_emoji, color)')
+        .select('id, event_id, member_id, status, modified_notes, created_at, updated_at, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
         .eq('event_id', event.id)
-      return { ...event, participants: participants ?? [] }
+
+      const list = rows ?? []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const participants = list.map((r: any) => r.members).filter(Boolean)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const attendances = list.map((r: any) => ({
+        id: r.id,
+        event_id: r.event_id,
+        member_id: r.member_id,
+        status: r.status,
+        modified_notes: r.modified_notes,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        member: r.members,
+      }))
+
+      return { ...event, participants, attendances }
     })
   )
 
@@ -94,12 +114,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: null, error: error?.message ?? 'Creazione fallita' }, { status: 500 })
   }
 
+  // Dalla migration 015 event_participants e` la tabella delle RISPOSTE
+  // (status='confirmed'/'skipped'/'modified'), non piu` un roster
+  // pre-selezionato. Non inseriamo righe in autonomia alla creazione
+  // dell'evento: se l'utente ha selezionato membri nel form della
+  // calendar UI, li trattiamo come "lista a cui notificare l'evento",
+  // non come "membri pre-confermati". Pre-confermare per conto di altri
+  // significherebbe inventare un consenso che non hanno dato.
   const participantIds = participant_ids ?? []
   if (participantIds.length > 0) {
-    await db.from('event_participants').insert(
-      participantIds.map((mid) => ({ event_id: event.id, member_id: mid }))
-    )
-
     await notifyMembers(
       participantIds.filter((id) => id !== member.id),
       'new_event',
@@ -109,15 +132,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Fetch participants with member details for response
-  const { data: participants } = await db
-    .from('event_participants')
-    .select('member_id, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
-    .eq('event_id', event.id)
-
+  // Nessuna riga in event_participants a questo punto (creazione fresca),
+  // ma la pagina Attivita` unificata si aspetta i campi participants/attendances.
   return NextResponse.json({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    data: { ...event, participants: (participants ?? []).map((p: Record<string, any>) => p.members) },
+    data: { ...event, participants: [], attendances: [] },
     error: null
   }, { status: 201 })
 }
