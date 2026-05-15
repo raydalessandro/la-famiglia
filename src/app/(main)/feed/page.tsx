@@ -2,16 +2,39 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { Archivo_Narrow, Spectral } from 'next/font/google'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
 import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { compressImage } from '@/lib/storage'
-import { ReactionEmoji, MemberPublic, CreatePollInput, BirthdayToday, ApiResponse } from '@/types/database'
+import { MemberPublic, CreatePollInput, BirthdayToday, ApiResponse } from '@/types/database'
 
 const MAX_POLL_OPTIONS = 4
 const MIN_POLL_OPTIONS = 2
+
+// Tipografia "Soft Brutalism" iniettata SOLO su /feed (richiesta del brief).
+// - Archivo Narrow: grotesque condensed bold per autori, header, etichette
+//   azione (uppercase + tracking-wider). Sostituisce il serif italic precedente.
+// - Spectral: serif raffinato per il body dei post (17px), contrasto elegante
+//   col grotesque uppercase.
+// Le variabili CSS vengono applicate sul wrapper della pagina; PostCard le
+// legge tramite font-grotesque/font-serif (Tailwind config). Fuori da /feed
+// i font cadono sui fallback system, PostCard resta leggibile.
+const grotesque = Archivo_Narrow({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  variable: '--font-grotesque',
+  display: 'swap',
+})
+
+const serif = Spectral({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-serif',
+  display: 'swap',
+})
 
 function emptyPollOptions(): string[] {
   return ['', '']
@@ -219,51 +242,54 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] pb-24">
-      {/* Header — display title "La Famiglia" in serif italic light per
-          dare identita` tipo Instagram/Threads (la pagina principale
-          parla il nome del prodotto, non l'etichetta della sezione).
-          Niente border-bottom: l'header fluisce nel contenuto. Una sola
-          icona azione (segnalibro per /saved) thin-stroke. */}
-      <div className="sticky top-0 z-30 bg-[#1a1a2e]/95 backdrop-blur">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="font-serif italic font-light text-white text-[26px] leading-none tracking-tight">
+    // Wrapper pagina: ink (burgundy/ink warm-black) + variabili font.
+    // I figli ereditano grotesque/serif via Tailwind utilities font-grotesque,
+    // font-serif (vedi tailwind.config.ts) che leggono --font-grotesque /
+    // --font-serif iniettate qui.
+    <div className={`${grotesque.variable} ${serif.variable} min-h-screen bg-ink pb-24`}>
+      {/* Header — "La Famiglia" in grotesque condensed bold uppercase.
+          Niente più serif italic: per coerenza col nuovo linguaggio brutalist
+          il display title parla la stessa lingua delle etichette azione.
+          Border-bottom 1.5px ottone — separazione netta a stampa, non blur. */}
+      <div className="sticky top-0 z-30 bg-ink/95 backdrop-blur border-b border-brass/40">
+        <div className="flex items-center justify-between px-4 py-4">
+          <h1 className="font-grotesque font-bold uppercase text-ivory text-[28px] leading-none tracking-[0.08em]">
             La Famiglia
           </h1>
           <button
             type="button"
             onClick={() => router.push('/saved')}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:text-[#E8A838] hover:bg-white/5 transition-colors"
+            className="font-grotesque font-bold uppercase text-[12px] tracking-[0.14em] text-ivory/80 hover:text-ivory min-h-touch px-3 border border-brass/60 hover:border-brass active:scale-95 transition-all"
             aria-label="Apri post salvati"
           >
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z" />
-            </svg>
+            Salvati
           </button>
         </div>
       </div>
 
       {/* Banner compleanni — visibile solo se almeno un membro di
-       * famiglia compie gli anni oggi. Tap → /family/[id] del
-       * festeggiato (deep link al profilo). Più festeggiati →
-       * un card per ciascuno. */}
+       * famiglia compie gli anni oggi. Niente emoji 🎉 (richiesta brief:
+       * niente emoji nella chrome UI). Card brutalist: bordo netto ottone,
+       * angoli vivi, ombra offset. Tap → /family/[id]. */}
       {birthdaysToday.length > 0 && (
-        <div className="px-4 pt-4 flex flex-col gap-2">
+        <div className="px-4 pt-4 flex flex-col gap-3">
           {birthdaysToday.map((b) => (
             <button
               key={b.id}
               type="button"
               onClick={() => router.push(`/family/${b.id}`)}
-              className="w-full text-left rounded-2xl border border-[#E8A838]/30 bg-gradient-to-r from-[#E8A838]/15 to-[#E8A838]/5 px-4 py-3 transition-colors hover:from-[#E8A838]/25"
+              className="w-full text-left border-[1.5px] border-brass bg-brass-soft px-4 py-3 shadow-brutal hover:bg-brass/25 active:scale-[0.99] transition-all"
               aria-label={`Apri profilo di ${b.name}`}
             >
-              <p className="text-sm text-white">
-                <span className="mr-1.5 text-base">🎉</span>
-                Oggi <span className="font-semibold text-[#E8A838]">{b.name}</span>{' '}
+              <p className="font-grotesque font-bold uppercase tracking-[0.12em] text-[11px] text-brass mb-1">
+                Compleanno · Oggi
+              </p>
+              <p className="font-serif text-[17px] leading-snug text-ivory">
+                <span className="font-grotesque font-bold uppercase tracking-[0.08em] text-ivory">{b.name}</span>{' '}
                 {b.id === member?.id ? (
-                  <>compi <span className="font-semibold">{b.age}</span> anni. Auguri!</>
+                  <>compi <span className="font-grotesque font-bold">{b.age}</span> anni. Auguri.</>
                 ) : (
-                  <>compie <span className="font-semibold">{b.age}</span> anni. Auguri!</>
+                  <>compie <span className="font-grotesque font-bold">{b.age}</span> anni. Auguri.</>
                 )}
               </p>
             </button>
@@ -277,7 +303,7 @@ export default function FeedPage() {
           Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)
         ) : posts.length === 0 ? (
           <EmptyState
-            icon="📝"
+            icon="—"
             title="La bacheca è vuota"
             description="Condividi una foto, una storia o una ricetta — sarà visibile solo alla famiglia."
             action={
@@ -308,18 +334,21 @@ export default function FeedPage() {
 
         {hasMore && (
           <div ref={bottomRef} className="flex justify-center py-4">
-            <div className="w-6 h-6 border-2 border-[#E8A838]/40 border-t-[#E8A838] rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-brass/40 border-t-brass animate-spin" />
           </div>
         )}
       </div>
 
-      {/* FAB */}
+      {/* FAB — angoli vivi, bordo ottone, "+" senza fill colorato pesante.
+          Tap target 56px (sopra il 44px minimo). Etichetta uppercase niente
+          glyph emoji. */}
       <button
         onClick={() => setSheetOpen(true)}
-        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+        className="fixed bottom-24 right-5 z-30 h-14 px-5 bg-ink-raised border-[1.5px] border-brass shadow-brutal flex items-center gap-2 text-ivory active:scale-95 transition-all hover:bg-brass-soft"
         aria-label="Crea post"
       >
-        +
+        <span aria-hidden="true" className="font-grotesque font-bold text-2xl leading-none text-brass">+</span>
+        <span className="font-grotesque font-bold uppercase tracking-[0.14em] text-[12px]">Scrivi</span>
       </button>
 
       {/* Create Post BottomSheet */}
