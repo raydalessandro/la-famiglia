@@ -3,18 +3,37 @@ import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { notifyMembers } from '@/lib/notifications'
 
-// GET /api/events?month=4&year=2026 → ApiResponse<Event[]>
+// GET /api/events → ApiResponse<Event[]>
+// Due modalita` di filtro mutuamente esclusive:
+//   - ?week_start=YYYY-MM-DD  → ritorna i 7 giorni a partire dal lunedi`
+//     dato. Usata dalla pagina Attivita` unificata (vista settimanale).
+//   - ?month=4&year=2026      → ritorna il mese intero. Usata dal calendario.
+// Default: mese corrente.
 export async function GET(req: NextRequest) {
   const member = await requireAuth()
 
   if (member instanceof NextResponse) return member
 
   const { searchParams } = new URL(req.url)
-  const month = parseInt(searchParams.get('month') ?? String(new Date().getMonth() + 1), 10)
-  const year = parseInt(searchParams.get('year') ?? String(new Date().getFullYear()), 10)
+  const weekStart = searchParams.get('week_start')
 
-  const firstDay = new Date(year, month - 1, 1).toISOString().split('T')[0]
-  const lastDay = new Date(year, month, 0).toISOString().split('T')[0]
+  let firstDay: string
+  let lastDay: string
+  if (weekStart && /^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+    const [y, m, d] = weekStart.split('-').map(Number)
+    const monday = new Date(y, m - 1, d)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    const fmt = (date: Date) =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    firstDay = fmt(monday)
+    lastDay = fmt(sunday)
+  } else {
+    const month = parseInt(searchParams.get('month') ?? String(new Date().getMonth() + 1), 10)
+    const year = parseInt(searchParams.get('year') ?? String(new Date().getFullYear()), 10)
+    firstDay = new Date(year, month - 1, 1).toISOString().split('T')[0]
+    lastDay = new Date(year, month, 0).toISOString().split('T')[0]
+  }
 
   const db = createServerClient()
   const { data: events, error } = await db
