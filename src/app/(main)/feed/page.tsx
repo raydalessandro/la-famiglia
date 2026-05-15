@@ -8,7 +8,7 @@ import { useMembers } from '@/hooks/useMembers'
 import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { compressImage } from '@/lib/storage'
-import { ReactionEmoji, MemberPublic, CreatePollInput, BirthdayToday, ApiResponse } from '@/types/database'
+import { MemberPublic, CreatePollInput, BirthdayToday, ApiResponse } from '@/types/database'
 
 const MAX_POLL_OPTIONS = 4
 const MIN_POLL_OPTIONS = 2
@@ -219,21 +219,23 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] pb-24">
-      {/* Header — display title "La Famiglia" in serif italic light per
-          dare identita` tipo Instagram/Threads (la pagina principale
-          parla il nome del prodotto, non l'etichetta della sezione).
-          Niente border-bottom: l'header fluisce nel contenuto. Una sola
-          icona azione (segnalibro per /saved) thin-stroke. */}
-      <div className="sticky top-0 z-30 bg-[#1a1a2e]/95 backdrop-blur">
+    // bg #FAFAFA (off-white riposante) + -mx-4 -my-2 cancella il padding
+    // del wrapper main del layout così la light surface arriva edge-to-edge.
+    // pb generoso per spazio FAB + bottom-tab + safe area.
+    <div className="-mx-4 -my-2 min-h-screen bg-[#FAFAFA] pb-32">
+      {/* Header sticky — wordmark Inter sans-serif (NON serif italic).
+          bg #FAFAFA/85 + backdrop-blur-xl: Threads style, header trasparente
+          che si fonde con lo scroll. Hairline 1px bottom #EAEAEA.
+          z-20: sotto la layout Header globale (z-30) e sotto FAB/BottomSheet. */}
+      <div className="sticky top-0 z-20 bg-[#FAFAFA]/85 backdrop-blur-xl border-b border-[#EAEAEA]">
         <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="font-serif italic font-light text-white text-[26px] leading-none tracking-tight">
+          <h1 className="font-semibold text-[#0F0F0F] text-[22px] leading-none tracking-tight">
             La Famiglia
           </h1>
           <button
             type="button"
             onClick={() => router.push('/saved')}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:text-[#E8A838] hover:bg-white/5 transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-[#0F0F0F] hover:bg-[#EAEAEA] transition-colors"
             aria-label="Apri post salvati"
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -243,23 +245,21 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {/* Banner compleanni — visibile solo se almeno un membro di
-       * famiglia compie gli anni oggi. Tap → /family/[id] del
-       * festeggiato (deep link al profilo). Più festeggiati →
-       * un card per ciascuno. */}
+      {/* Banner compleanni — light style: bg quasi-bianco con hairline, NO
+       * gradient navy. Mantiene affordance "celebrazione" con accent purple
+       * iOS che è il nostro accent link nel feed light. */}
       {birthdaysToday.length > 0 && (
-        <div className="px-4 pt-4 flex flex-col gap-2">
+        <div className="px-4 pt-3 flex flex-col gap-2">
           {birthdaysToday.map((b) => (
             <button
               key={b.id}
               type="button"
               onClick={() => router.push(`/family/${b.id}`)}
-              className="w-full text-left rounded-2xl border border-[#E8A838]/30 bg-gradient-to-r from-[#E8A838]/15 to-[#E8A838]/5 px-4 py-3 transition-colors hover:from-[#E8A838]/25"
+              className="w-full text-left rounded-2xl border border-[#EAEAEA] bg-white px-4 py-3 transition-colors hover:border-[#0F0F0F]"
               aria-label={`Apri profilo di ${b.name}`}
             >
-              <p className="text-sm text-white">
-                <span className="mr-1.5 text-base">🎉</span>
-                Oggi <span className="font-semibold text-[#E8A838]">{b.name}</span>{' '}
+              <p className="text-[15px] text-[#0F0F0F]">
+                Oggi <span className="font-semibold text-[#5856D6]">{b.name}</span>{' '}
                 {b.id === member?.id ? (
                   <>compi <span className="font-semibold">{b.age}</span> anni. Auguri!</>
                 ) : (
@@ -271,21 +271,26 @@ export default function FeedPage() {
         </div>
       )}
 
-      {/* Posts */}
-      <div className="px-4 py-4 flex flex-col gap-4">
+      {/* Posts — gap-0! I post sono separati dal border-b hairline interno
+          al PostCard (Threads style). px-4 mantiene il padding orizzontale. */}
+      <div className="px-4">
         {isLoading && posts.length === 0 ? (
-          Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)
+          <div className="flex flex-col gap-4 py-4">
+            {Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)}
+          </div>
         ) : posts.length === 0 ? (
-          <EmptyState
-            icon="📝"
-            title="La bacheca è vuota"
-            description="Condividi una foto, una storia o una ricetta — sarà visibile solo alla famiglia."
-            action={
-              <Button onClick={() => setSheetOpen(true)}>
-                Scrivi il primo post
-              </Button>
-            }
-          />
+          <div className="py-8">
+            <EmptyState
+              icon="📝"
+              title="La bacheca è vuota"
+              description="Condividi una foto, una storia o una ricetta — sarà visibile solo alla famiglia."
+              action={
+                <Button onClick={() => setSheetOpen(true)}>
+                  Scrivi il primo post
+                </Button>
+              }
+            />
+          </div>
         ) : (
           posts.map((post) => (
             <PostCard
@@ -308,18 +313,21 @@ export default function FeedPage() {
 
         {hasMore && (
           <div ref={bottomRef} className="flex justify-center py-4">
-            <div className="w-6 h-6 border-2 border-[#E8A838]/40 border-t-[#E8A838] rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-[#EAEAEA] border-t-[#0F0F0F] rounded-full animate-spin" />
           </div>
         )}
       </div>
 
-      {/* FAB */}
+      {/* FAB — mono nero pieno, niente animazione tap. */}
       <button
+        type="button"
         onClick={() => setSheetOpen(true)}
-        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#0F0F0F] shadow-lg shadow-black/15 flex items-center justify-center text-white hover:bg-[#2A2A2A] transition-colors"
         aria-label="Crea post"
       >
-        +
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+        </svg>
       </button>
 
       {/* Create Post BottomSheet */}

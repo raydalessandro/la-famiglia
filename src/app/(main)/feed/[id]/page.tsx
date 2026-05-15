@@ -8,7 +8,6 @@ import {
   Avatar,
   Button,
   EmptyState,
-  Header,
   MemberLink,
   MentionText,
   PostCardSkeleton,
@@ -29,25 +28,30 @@ function formatRelativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'adesso'
-  if (mins < 60) return `${mins}m fa`
+  if (mins < 60) return `${mins}m`
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h fa`
+  if (hrs < 24) return `${hrs}h`
   const days = Math.floor(hrs / 24)
-  if (days < 7) return `${days}g fa`
+  if (days < 7) return `${days}g`
   return new Date(dateStr).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 }
 
+/**
+ * Riga commento — stile Threads light. Avatar 32px, username bold,
+ * testo 15px, meta sotto (timestamp · piaceri · Rispondi).
+ *
+ * NIENTE bubble container intorno al testo: Threads renderizza i commenti
+ * come testo libero allineato all'avatar, separati dai post da hairline.
+ */
 function CommentRow({
   comment,
   members,
 }: {
   comment: PostCommentWithAuthor
-  // Per il rendering delle `@menzioni` come link al profilo. Pass-through
-  // dal page-level useMembers().
   members: Pick<MemberPublic, 'id' | 'name'>[]
 }) {
   return (
-    <div className="flex gap-3 px-4 py-3">
+    <div className="flex gap-3 px-4 py-3 border-b border-[#EAEAEA]">
       <MemberLink
         memberId={comment.author_id}
         ariaLabel={`Apri il profilo di ${comment.author.name}`}
@@ -61,24 +65,21 @@ function CommentRow({
         />
       </MemberLink>
       <div className="flex-1 min-w-0">
-        <div className="bg-surface-raised rounded-card px-3 py-2 border border-white/5">
+        <div className="flex items-baseline gap-1.5">
           <MemberLink
             memberId={comment.author_id}
             ariaLabel={`Apri il profilo di ${comment.author.name}`}
           >
-            <span
-              className="text-[13px] font-semibold"
-              style={{ color: comment.author.color || '#E8A838' }}
-            >
+            <span className="text-[15px] font-semibold text-[#0F0F0F]">
               {comment.author.name}
             </span>
           </MemberLink>
-          <p className="text-white/90 text-body whitespace-pre-wrap mt-0.5">
-            <MentionText text={comment.text} members={members} />
-          </p>
+          <span className="text-[13px] text-[#707070]">
+            · {formatRelativeTime(comment.created_at)}
+          </span>
         </div>
-        <p className="text-white/40 text-xs mt-1 ml-2">
-          {formatRelativeTime(comment.created_at)}
+        <p className="text-[#0F0F0F] text-[15px] leading-snug whitespace-pre-wrap mt-0.5">
+          <MentionText text={comment.text} members={members} />
         </p>
       </div>
     </div>
@@ -243,13 +244,44 @@ export default function PostPage() {
     [router, toast],
   )
 
+  const commentCount = comments.length
+
   return (
-    <div className="flex min-h-dvh flex-col bg-surface">
-      <Header title="Post" showBack />
+    // -mx-4 -my-2 cancella il wrapper main del layout per portare il
+    // light bg edge-to-edge. min-h-dvh per occupare il viewport intero
+    // anche su iOS dove il bottom nav bar dinamico altera l'altezza.
+    <div className="-mx-4 -my-2 flex min-h-dvh flex-col bg-[#FAFAFA]">
+      {/* Header sticky — back arrow + "Risposte" + count. NON usa il
+          componente Header globale: quello e` dark+gold. Stile light
+          minimal coerente con il feed. */}
+      <div className="sticky top-0 z-20 bg-[#FAFAFA]/85 backdrop-blur-xl border-b border-[#EAEAEA]">
+        <div className="flex items-center gap-2 px-2 py-2 min-h-[56px]">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="flex h-11 w-11 items-center justify-center rounded-full text-[#0F0F0F] hover:bg-[#EAEAEA] transition-colors"
+            aria-label="Indietro"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M19 12H5M12 5l-7 7 7 7" />
+            </svg>
+          </button>
+          <div className="flex items-baseline gap-1.5">
+            <h1 className="font-semibold text-[#0F0F0F] text-[17px] leading-none">
+              Risposte
+            </h1>
+            {commentCount > 0 && (
+              <span className="text-[#707070] text-[13px] leading-none">
+                · {commentCount}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
 
       <main className="flex-1 flex flex-col">
         {isLoadingPost ? (
-          <div className="p-4">
+          <div className="px-4 pt-2">
             <PostCardSkeleton />
           </div>
         ) : notFound || !post ? (
@@ -261,7 +293,7 @@ export default function PostPage() {
           />
         ) : (
           <>
-            <div className="p-4">
+            <div className="px-4">
               <PostCard
                 post={post}
                 currentMemberId={member?.id}
@@ -270,23 +302,22 @@ export default function PostPage() {
                 onBookmark={handleBookmark}
                 onReact={handleReact}
                 onDelete={handleDelete}
-                // No onCommentsClick: we're already here.
+                // No onCommentsClick: siamo già nella pagina post singolo.
               />
             </div>
 
-            {/* Comments */}
-            <div className="border-t border-white/5 mt-2">
-              <h2 className="px-4 pt-3 pb-2 text-white/60 text-caption font-semibold uppercase tracking-wide">
-                Commenti
-              </h2>
+            {/* Lista commenti — stile Threads: hairline tra ogni riga,
+                NO bubble container. Avatar 32px, username bold inline col
+                timestamp. */}
+            <div>
               {isLoadingComments ? (
-                <div className="flex flex-col gap-3 px-4 py-2">
-                  <Skeleton className="h-16 rounded-card" />
-                  <Skeleton className="h-16 rounded-card" />
+                <div className="flex flex-col gap-3 px-4 py-3">
+                  <Skeleton className="h-12 rounded-lg" />
+                  <Skeleton className="h-12 rounded-lg" />
                 </div>
               ) : comments.length === 0 ? (
-                <p className="text-white/40 text-body text-center py-8 px-6">
-                  Nessun commento. Sii il primo a rispondere.
+                <p className="text-[#707070] text-[15px] text-center py-10 px-6">
+                  Ancora nessuna risposta. Scrivi la prima.
                 </p>
               ) : (
                 <div className="flex flex-col">
@@ -296,15 +327,22 @@ export default function PostPage() {
                 </div>
               )}
             </div>
+
+            {/* Spacer per il composer fisso in fondo + bottom-nav globale +
+                safe area. Il composer e` sticky bottom-0 quindi serve un
+                padding-bottom sul contenuto altrimenti l'ultimo commento
+                resta coperto. */}
+            <div aria-hidden="true" className="h-24" />
           </>
         )}
       </main>
 
-      {/* Comment composer fixed at the bottom — only when post exists */}
+      {/* Composer fisso in fondo — avatar 32px + textarea hairline rounded
+          + bottone "Pubblica" testo purple (NON solid). Stile Threads. */}
       {post && member && (
         <form
           onSubmit={handleSubmit}
-          className="sticky bottom-0 bg-surface/95 backdrop-blur border-t border-white/10 px-3 py-2 flex items-end gap-2"
+          className="sticky bottom-0 bg-[#FAFAFA]/95 backdrop-blur-xl border-t border-[#EAEAEA] px-4 py-3 flex items-center gap-3"
         >
           <Avatar
             emoji={member.avatar_emoji}
@@ -316,19 +354,16 @@ export default function PostPage() {
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Scrivi un commento…"
+            placeholder="Scrivi una risposta…"
             rows={1}
-            className="flex-1 bg-surface-sunken text-white text-body placeholder:text-white/30 rounded-bubble px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-accent/40 min-h-touch"
+            className="flex-1 bg-white text-[#0F0F0F] text-[15px] placeholder:text-[#707070] border border-[#EAEAEA] rounded-2xl px-4 py-2.5 resize-none focus:outline-none focus:border-[#0F0F0F] min-h-touch"
           />
           <button
             type="submit"
             disabled={!draft.trim() || isSending}
-            className="min-h-touch min-w-touch rounded-full bg-accent text-surface font-semibold flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all"
-            aria-label="Invia commento"
+            className="min-h-touch px-2 text-[15px] font-semibold text-[#5856D6] hover:text-[#4744B5] disabled:text-[#707070] disabled:opacity-50 transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l14-7-7 14-2-5-5-2z" />
-            </svg>
+            Pubblica
           </button>
         </form>
       )}
