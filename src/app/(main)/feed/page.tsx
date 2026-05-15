@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
+import { useMembers } from '@/hooks/useMembers'
 import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { compressImage } from '@/lib/storage'
@@ -21,6 +22,8 @@ export default function FeedPage() {
   const router = useRouter()
   const toast = useToast()
   const { member } = useAuth()
+  // Lista dei membri per risolvere `@nome` nei post in link al profilo.
+  const { members } = useMembers()
   const {
     posts,
     isLoading,
@@ -289,6 +292,7 @@ export default function FeedPage() {
               key={post.id}
               post={post}
               currentMemberId={member?.id}
+              members={members}
               onLike={toggleLike}
               onBookmark={toggleBookmark}
               onReact={(id, emoji) => {

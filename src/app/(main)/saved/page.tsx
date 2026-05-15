@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { useMembers } from '@/hooks/useMembers'
 import { Button, EmptyState, PostCardSkeleton } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import {
@@ -28,6 +29,7 @@ const PER_PAGE = 10
 export default function SavedPage() {
   const router = useRouter()
   const { member } = useAuth()
+  const { members } = useMembers()
   const [posts, setPosts] = useState<PostWithDetails[]>([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
@@ -150,6 +152,7 @@ export default function SavedPage() {
               key={post.id}
               post={post}
               currentMemberId={member?.id}
+              members={members}
               onLike={handleLike}
               onBookmark={handleBookmark}
               onReact={handleReact}
