@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { deleteImage } from '@/lib/storage'
 import { buildPostWithDetails } from '@/lib/posts'
+import { deleteMentionsForSource } from '@/lib/mentions'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -80,6 +81,21 @@ export async function DELETE(_req: NextRequest, { params }: RouteContext) {
       })
     )
   }
+
+  // Cleanup delle mention orfane: la migration 014 spiega che
+  // `mentions.source_id` non ha FK (polymorphic) e quindi nessun
+  // CASCADE. Prima del DELETE post raccogliamo i comment_id dei
+  // commenti (che CASCADE eliminerebbe), poi puliamo tutte le mention
+  // dipendenti — sia quelle sul post sia quelle sui suoi commenti.
+  // Best-effort: errori loggati ma non bloccanti.
+  const { data: commentIds } = await db
+    .from('post_comments')
+    .select('id')
+    .eq('post_id', id)
+  for (const c of (commentIds ?? []) as Array<{ id: string }>) {
+    await deleteMentionsForSource('comment', c.id)
+  }
+  await deleteMentionsForSource('post', id)
 
   // Delete post (cascade handles post_images, post_likes, post_comments)
   const { error: deleteError } = await db.from('posts').delete().eq('id', id)

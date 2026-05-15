@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth, toPublicMember } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { notifyMembers } from '@/lib/notifications'
+import { emit } from '@/lib/notification-events'
+import { parseMentions, insertMentions } from '@/lib/mentions'
 import { Member, PostCommentWithAuthor } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -121,5 +123,49 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     ).catch((err) => console.error('notifyMembers failed:', err))
   }
 
+  // Parse mention + push al/ai menzionati nel commento. Separato
+  // dalla notifica "nuovo commento" all'autore del post — un
+  // menzionato che NON è l'autore del post riceve la push mention,
+  // l'autore del post riceve la sua. Caso edge: se l'autore del
+  // commento menziona l'autore del post, quest'ultimo riceve 2
+  // banner (uno "nuovo commento" + uno "@menzione"). Accettabile,
+  // pattern WhatsApp.
+  void (async () => {
+    try {
+      const { data: members } = await db
+        .from('members')
+        .select('id, name')
+        .eq('is_active', true)
+      const parsed = parseMentions(text, (members ?? []) as Pick<Member, 'id' | 'name'>[], {
+        excludeAuthorId: member.id,
+      })
+      const inserted = await insertMentions(
+        parsed,
+        { type: 'comment', id: comment.id },
+        member.id,
+      )
+      for (const m of inserted) {
+        await emit('mention', {
+          author: { id: member.id, name: member.name },
+          mentionedId: m.mentioned_id,
+          source: {
+            type: 'comment',
+            link: `/feed/${post_id}`,
+            preview: snippet(text),
+          },
+        }).catch((err) => console.error('emit mention (comment) failed:', err))
+      }
+    } catch (err) {
+      console.error('[comments] mention pipeline failed:', err)
+    }
+  })()
+
   return NextResponse.json({ data: result, error: null }, { status: 201 })
+}
+
+function snippet(text: string, max = 100): string {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + '…'
 }

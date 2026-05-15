@@ -4,7 +4,8 @@ import { createServerClient } from '@/lib/supabase/client'
 import { uploadImage } from '@/lib/storage'
 import { buildPostWithDetails } from '@/lib/posts'
 import { emit } from '@/lib/notification-events'
-import type { CreatePollInput } from '@/types/database'
+import { parseMentions, insertMentions } from '@/lib/mentions'
+import type { CreatePollInput, Member } from '@/types/database'
 
 // GET /api/posts?page=1&per_page=10&author_id=xxx → PaginatedResponse<PostWithDetails>
 export async function GET(req: NextRequest) {
@@ -189,7 +190,49 @@ export async function POST(req: NextRequest) {
     post: { id: post.id, text, post_type },
   }).catch((err) => console.error('emit new_post failed:', err))
 
+  // Parse + persistenza delle @menzioni nel testo del post. La push
+  // notification al menzionato è SEPARATA da quella "new_post"
+  // generale: chi è menzionato riceve due banner (uno per il post,
+  // uno per la mention) — è il pattern WhatsApp di group + reply.
+  // Fire-and-forget: il client non aspetta la creazione delle
+  // mention prima di vedere il post pubblicato.
+  void (async () => {
+    try {
+      const { data: members } = await db
+        .from('members')
+        .select('id, name')
+        .eq('is_active', true)
+      const parsed = parseMentions(text, (members ?? []) as Pick<Member, 'id' | 'name'>[], {
+        excludeAuthorId: member.id,
+      })
+      const inserted = await insertMentions(parsed, { type: 'post', id: post.id }, member.id)
+      for (const m of inserted) {
+        await emit('mention', {
+          author: { id: member.id, name: member.name },
+          mentionedId: m.mentioned_id,
+          source: {
+            type: 'post',
+            link: `/feed/${post.id}`,
+            preview: snippet(text),
+          },
+        }).catch((err) => console.error('emit mention (post) failed:', err))
+      }
+    } catch (err) {
+      console.error('[posts] mention pipeline failed:', err)
+    }
+  })()
+
   return NextResponse.json({ data: postWithDetails, error: null }, { status: 201 })
+}
+
+// Snippet usato come body delle push di mention. Limite ~100 char
+// con ellipsis, niente trim aggressivo che taglia in mezzo a una
+// parola (cosmetico ma migliora la lettura sul banner).
+function snippet(text: string, max = 100): string {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + '…'
 }
 
 type PollParseResult = { value: CreatePollInput } | { error: string }

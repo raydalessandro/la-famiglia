@@ -355,6 +355,7 @@ export type Notification = {
     | 'new_reaction'
     | 'chat_message'
     | 'birthday'
+    | 'mention'
   title: string
   body: string
   link: string | null
@@ -377,6 +378,21 @@ export type AppConfig = {
   key: string
   value: string
   updated_at: string
+}
+
+/**
+ * Mention persistente: una riga per ogni `@nome` riconosciuto dentro
+ * un post / commento / messaggio chat. Vedi migration 014 per il
+ * modello polimorfico (`source_type` discriminator + `source_id`
+ * UUID senza FK).
+ */
+export type Mention = {
+  id: string
+  source_type: 'post' | 'comment' | 'chat_message'
+  source_id: string
+  mentioned_id: string
+  author_id: string
+  created_at: string
 }
 
 // --- Input types ---

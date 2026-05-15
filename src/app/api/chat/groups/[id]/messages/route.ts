@@ -3,7 +3,8 @@ import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { uploadImage } from '@/lib/storage'
 import { emit } from '@/lib/notification-events'
-import type { ChatMessage, ChatMessageReplyRef, ChatMessageWithAuthor, MemberPublic } from '@/types/database'
+import { parseMentions, insertMentions } from '@/lib/mentions'
+import type { ChatMessage, ChatMessageReplyRef, ChatMessageWithAuthor, Member, MemberPublic } from '@/types/database'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -327,6 +328,43 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     },
   }).catch((err) => console.error('emit chat_message failed:', err))
 
+  // Mention parsing nel testo del messaggio chat. Solo sui messaggi
+  // di testo: image/document sono sempre senza mention (la caption è
+  // separata e ad oggi non c'è). Push di mention SEPARATA dalla push
+  // "chat_message" del gruppo — un menzionato che è anche membro del
+  // gruppo riceve entrambe (pattern WhatsApp).
+  if (messageType === 'text' && text.trim()) {
+    void (async () => {
+      try {
+        const { data: members } = await db
+          .from('members')
+          .select('id, name')
+          .eq('is_active', true)
+        const parsed = parseMentions(text.trim(), (members ?? []) as Pick<Member, 'id' | 'name'>[], {
+          excludeAuthorId: member.id,
+        })
+        const inserted = await insertMentions(
+          parsed,
+          { type: 'chat_message', id: message.id },
+          member.id,
+        )
+        for (const m of inserted) {
+          await emit('mention', {
+            author: { id: member.id, name: member.name },
+            mentionedId: m.mentioned_id,
+            source: {
+              type: 'chat_message',
+              link: `/chat/${groupId}`,
+              preview: snippet(text.trim()),
+            },
+          }).catch((err) => console.error('emit mention (chat) failed:', err))
+        }
+      } catch (err) {
+        console.error('[chat] mention pipeline failed:', err)
+      }
+    })()
+  }
+
   let shaped: ChatMessageWithAuthor | ChatMessage = message
   if (enriched) {
     const enrichedTyped = enriched as unknown as ChatMessage & { author: MemberPublic }
@@ -338,4 +376,13 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   }
 
   return NextResponse.json({ data: shaped, error: null }, { status: 201 })
+}
+
+// Snippet helper per le push di mention. Stesso truncate algorithm
+// usato in /api/posts e /api/posts/:id/comments.
+function snippet(text: string, max = 100): string {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + '…'
 }
