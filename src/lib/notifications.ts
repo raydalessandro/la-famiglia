@@ -3,11 +3,42 @@ import { Notification, PushSubscription } from '../types/database'
 import webpush from 'web-push'
 
 // Constants
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY!
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!
+//
+// Le env VAPID NON vengono lette qui al module-load. Vedi `readVapidConfig()`
+// più sotto: la lettura è lazy, identica al pattern di `createServerClient`
+// in supabase/client.ts (commit 7735daa, 14/05/2026). Motivo: `next build`
+// e i prerender pre-runtime possono importare questo modulo in contesti
+// dove process.env.VAPID_* non è ancora popolato — se leggessimo qui
+// resterebbero `undefined` "congelati" per quel processo, e a runtime
+// `webpush.setVapidDetails(..., undefined, undefined)` lancerebbe
+// "No key set for signer" con un trace inutile.
 const VAPID_EMAIL = process.env.VAPID_EMAIL || 'mailto:admin@famiglia.local'
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const TELEGRAM_API_BASE = 'https://api.telegram.org/bot'
+
+/**
+ * Lettura lazy delle VAPID keys + validazione esplicita. Chiamata da
+ * `sendPushNotification` prima di setVapidDetails.
+ *
+ * Ritorna null + logga `vapid_env_missing` con il nome esatto della env
+ * mancante se almeno una key non c'è. La funzione che chiama deve
+ * trattare null come "non posso mandare push, ma non è la fine del
+ * mondo" — la riga notifications è già stata creata, la campanella
+ * in-app funziona, solo il banner di sistema non parte.
+ */
+function readVapidConfig(): { publicKey: string; privateKey: string } | null {
+  const publicKey = process.env.VAPID_PUBLIC_KEY
+  const privateKey = process.env.VAPID_PRIVATE_KEY
+  if (!publicKey || !privateKey) {
+    pushLog('error', 'vapid_env_missing', {
+      publicKeyPresent: !!publicKey,
+      privateKeyPresent: !!privateKey,
+      hint: 'Verifica che VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY siano configurate per il deployment corrente (Vercel → Settings → Environment Variables → Production).',
+    })
+    return null
+  }
+  return { publicKey, privateKey }
+}
 
 // Helper: escape special characters for Telegram MarkdownV2
 function escapeMarkdown(text: string): string {
@@ -101,7 +132,15 @@ export async function sendPushNotification(
     return false
   }
 
-  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY)
+  // Lazy-read delle VAPID keys. Se mancano dall'env, `readVapidConfig`
+  // logga `vapid_env_missing` con il dettaglio di quale env è
+  // assente — niente crash, ritorniamo false e proseguiamo. Le altre
+  // subscription per altri member sotto `notifyMembers` non vengono
+  // tentate (tanto fallirebbero allo stesso modo).
+  const vapid = readVapidConfig()
+  if (!vapid) return false
+
+  webpush.setVapidDetails(VAPID_EMAIL, vapid.publicKey, vapid.privateKey)
 
   const payload = JSON.stringify({ title, body, link })
   let sentCount = 0
