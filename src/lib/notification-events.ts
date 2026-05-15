@@ -63,6 +63,17 @@ type PayloadByEvent = {
     // Chi è coinvolto nell'attività. La definizione filtrerà il sender via.
     participantIds: string[]
   }
+  /**
+   * Compleanno di un membro. Scatenato dal cron giornaliero alle
+   * 06:00 UTC. Niente "sender" — è un evento di sistema, non
+   * un'azione di un altro utente. Il festeggiato NON riceve la push
+   * (sa già che è il suo compleanno), tutti gli altri membri attivi
+   * sì.
+   */
+  birthday: {
+    member: { id: string; name: string }
+    age: number
+  }
 }
 
 export type NotificationEventKey = keyof PayloadByEvent
@@ -154,6 +165,28 @@ export const NOTIFICATION_EVENTS: Catalog = {
       // Notifichiamo solo chi è coinvolto — non spammiamo l'intera famiglia
       // per attività private (es. "Karate Luca").
       p.participantIds.filter((id) => id !== p.sender.id),
+  },
+
+  birthday: {
+    type: 'birthday',
+    title: () => '🎉 Buon compleanno',
+    body: (p) => `Oggi ${p.member.name} compie ${p.age} anni. Auguri!`,
+    // Deep link al profilo del festeggiato — l'utente che tocca la
+    // push si trova davanti la pagina giusta per scrivergli un
+    // messaggio diretto.
+    link: (p) => `/family/${p.member.id}`,
+    recipients: async (p, db) => {
+      // Tutti i membri attivi tranne il festeggiato. Lui sa già
+      // che è il suo compleanno, una push "Buon compleanno a Marco"
+      // arrivata a Marco stesso è strana.
+      const { data } = await db
+        .from('members')
+        .select('id')
+        .eq('is_active', true)
+      return ((data ?? []) as Array<{ id: string }>)
+        .map((m) => m.id)
+        .filter((id) => id !== p.member.id)
+    },
   },
 }
 

@@ -14,8 +14,21 @@ const NON_ADMIN_ALLOWED_FIELDS: (keyof UpdateMemberInput | 'new_pin')[] = [
   'notify_push',
   'notify_telegram',
   'telegram_chat_id',
+  'birth_date',
   'new_pin',
 ]
+
+// `birth_date` accetta formato ISO YYYY-MM-DD oppure null (rimuovi data).
+// Validato qui sia per admin sia per self prima dell'UPDATE — se il
+// formato è invalido Postgres lancerebbe un errore poco leggibile.
+function isValidBirthDate(value: unknown): value is string | null {
+  if (value === null) return true
+  if (typeof value !== 'string') return false
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  // Verifica che sia una data calendariale valida (e.g. NO 2026-02-30).
+  const d = new Date(value)
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value
+}
 
 // GET /api/members/:id → ApiResponse<MemberPublic | MemberSelf>
 // Ritorna MemberSelf (con preferenze notifiche) se isSelf || isAdmin,
@@ -105,6 +118,18 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       } else if (body[field as keyof UpdateMemberInput] !== undefined) {
         updatePayload[field] = body[field as keyof UpdateMemberInput]
       }
+    }
+  }
+
+  // Validazione formato `birth_date` (sia path admin sia self). Si applica
+  // solo se il campo è presente nel payload — l'omissione lascia il
+  // valore esistente intatto.
+  if ('birth_date' in updatePayload) {
+    if (!isValidBirthDate(updatePayload.birth_date)) {
+      return NextResponse.json(
+        { data: null, error: 'Data di nascita non valida. Usa il formato YYYY-MM-DD oppure null per rimuoverla.' },
+        { status: 400 },
+      )
     }
   }
 

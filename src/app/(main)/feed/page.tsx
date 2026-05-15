@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { compressImage } from '@/lib/storage'
-import { ReactionEmoji, MemberPublic, CreatePollInput } from '@/types/database'
+import { ReactionEmoji, MemberPublic, CreatePollInput, BirthdayToday, ApiResponse } from '@/types/database'
 
 const MAX_POLL_OPTIONS = 4
 const MIN_POLL_OPTIONS = 2
@@ -48,6 +48,24 @@ export default function FeedPage() {
   const [pollEnabled, setPollEnabled] = useState(false)
   const [pollQuestion, setPollQuestion] = useState('')
   const [pollOptions, setPollOptions] = useState<string[]>(emptyPollOptions)
+
+  // Compleanni di oggi (Fase 6.5). Fetch al mount, niente refetch
+  // periodico: il banner cambia tra UN giorno e l'altro, e tanto basta
+  // riaprire l'app il giorno dopo. Errore di rete → array vuoto, niente
+  // banner (degradato silente).
+  const [birthdaysToday, setBirthdaysToday] = useState<BirthdayToday[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void fetch('/api/birthdays/today')
+      .then((r) => r.json())
+      .then((json: ApiResponse<BirthdayToday[]>) => {
+        if (!cancelled && json.data) setBirthdaysToday(json.data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [pollMultiChoice, setPollMultiChoice] = useState(false)
   const [pollClosesAt, setPollClosesAt] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -221,6 +239,34 @@ export default function FeedPage() {
           </div>
         </div>
       </div>
+
+      {/* Banner compleanni — visibile solo se almeno un membro di
+       * famiglia compie gli anni oggi. Tap → /family/[id] del
+       * festeggiato (deep link al profilo). Più festeggiati →
+       * un card per ciascuno. */}
+      {birthdaysToday.length > 0 && (
+        <div className="px-4 pt-4 flex flex-col gap-2">
+          {birthdaysToday.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => router.push(`/family/${b.id}`)}
+              className="w-full text-left rounded-2xl border border-[#E8A838]/30 bg-gradient-to-r from-[#E8A838]/15 to-[#E8A838]/5 px-4 py-3 transition-colors hover:from-[#E8A838]/25"
+              aria-label={`Apri profilo di ${b.name}`}
+            >
+              <p className="text-sm text-white">
+                <span className="mr-1.5 text-base">🎉</span>
+                Oggi <span className="font-semibold text-[#E8A838]">{b.name}</span>{' '}
+                {b.id === member?.id ? (
+                  <>compi <span className="font-semibold">{b.age}</span> anni. Auguri!</>
+                ) : (
+                  <>compie <span className="font-semibold">{b.age}</span> anni. Auguri!</>
+                )}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Posts */}
       <div className="px-4 py-4 flex flex-col gap-4">
