@@ -12,6 +12,7 @@ import {
   useToast,
   EmptyState,
   MemberLink,
+  MentionText,
 } from '@/components/ui'
 import { ChatMessageWithAuthor } from '@/types/database'
 
@@ -503,10 +504,16 @@ export default function ChatRoomPage() {
                               className="max-h-72 w-auto object-cover cursor-pointer rounded-bubble"
                               onClick={() => window.open(msg.media_url ?? '', '_blank')}
                             />
-                            {msg.text && <p className="px-3.5 pb-2 pt-1">{msg.text}</p>}
+                            {msg.text && (
+                              <p className="px-3.5 pb-2 pt-1">
+                                <MentionText text={msg.text} members={members} />
+                              </p>
+                            )}
                           </div>
                         ) : (
-                          <div className="px-3.5 py-2">{msg.text}</div>
+                          <div className="px-3.5 py-2">
+                            <MentionText text={msg.text} members={members} />
+                          </div>
                         )}
                       </div>
 

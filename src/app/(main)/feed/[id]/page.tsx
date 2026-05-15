@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { useMembers } from '@/hooks/useMembers'
 import {
   Avatar,
   Button,
   EmptyState,
   Header,
   MemberLink,
+  MentionText,
   PostCardSkeleton,
   Skeleton,
   useToast,
@@ -35,7 +37,15 @@ function formatRelativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 }
 
-function CommentRow({ comment }: { comment: PostCommentWithAuthor }) {
+function CommentRow({
+  comment,
+  members,
+}: {
+  comment: PostCommentWithAuthor
+  // Per il rendering delle `@menzioni` come link al profilo. Pass-through
+  // dal page-level useMembers().
+  members: Pick<MemberPublic, 'id' | 'name'>[]
+}) {
   return (
     <div className="flex gap-3 px-4 py-3">
       <MemberLink
@@ -64,7 +74,7 @@ function CommentRow({ comment }: { comment: PostCommentWithAuthor }) {
             </span>
           </MemberLink>
           <p className="text-white/90 text-body whitespace-pre-wrap mt-0.5">
-            {comment.text}
+            <MentionText text={comment.text} members={members} />
           </p>
         </div>
         <p className="text-white/40 text-xs mt-1 ml-2">
@@ -80,6 +90,7 @@ export default function PostPage() {
   const postId = params?.id ?? ''
   const router = useRouter()
   const { member } = useAuth()
+  const { members } = useMembers()
   const toast = useToast()
 
   const [post, setPost] = useState<PostWithDetails | null>(null)
@@ -254,6 +265,7 @@ export default function PostPage() {
               <PostCard
                 post={post}
                 currentMemberId={member?.id}
+                members={members}
                 onLike={handleLike}
                 onBookmark={handleBookmark}
                 onReact={handleReact}
@@ -279,7 +291,7 @@ export default function PostPage() {
               ) : (
                 <div className="flex flex-col">
                   {comments.map((c) => (
-                    <CommentRow key={c.id} comment={c} />
+                    <CommentRow key={c.id} comment={c} members={members} />
                   ))}
                 </div>
               )}

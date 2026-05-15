@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { PostWithDetails, ReactionEmoji } from '@/types/database'
-import { Avatar, ReactionBar, MemberLink, ImageLightbox } from '@/components/ui'
+import { Avatar, ReactionBar, MemberLink, ImageLightbox, MentionText } from '@/components/ui'
 import { Poll } from './Poll'
+import type { MemberPublic } from '@/types/database'
 
 const POST_TYPE_LABELS: Record<string, string> = {
   recipe: 'Ricetta',
@@ -42,6 +43,7 @@ function formatRelativeTime(dateStr: string): string {
 export function PostCard({
   post,
   currentMemberId,
+  members,
   onLike,
   onBookmark,
   onReact,
@@ -52,6 +54,12 @@ export function PostCard({
 }: {
   post: PostWithDetails
   currentMemberId: string | undefined
+  // Lista membri della famiglia. Se passata, il testo del post viene
+  // renderizzato con `@nome` come link cliccabili al profilo (vedi
+  // <MentionText>). Opzionale per backward-compat con caller che non
+  // l'hanno wired — in quel caso il testo resta plain con la `@`
+  // letterale.
+  members?: Pick<MemberPublic, 'id' | 'name'>[]
   onLike: (id: string) => void
   // Opzionale per non rompere i caller esistenti che non l'hanno wired
   // (es. test). Se assente, l'icona bookmark non viene mostrata.
@@ -123,7 +131,9 @@ export function PostCard({
 
       {/* Text */}
       {post.text && (
-        <p className="px-4 pb-3 text-white/90 text-body whitespace-pre-wrap">{post.text}</p>
+        <p className="px-4 pb-3 text-white/90 text-body whitespace-pre-wrap">
+          {members ? <MentionText text={post.text} members={members} /> : post.text}
+        </p>
       )}
 
       {/* Poll */}
