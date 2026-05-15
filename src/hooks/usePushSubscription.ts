@@ -22,6 +22,15 @@ type UsePushSubscriptionReturn = {
   enable: () => Promise<{ ok: true } | { ok: false; reason: string }>
   /** Disattiva le push: unsubscribe browser + DELETE server. */
   disable: () => Promise<{ ok: true } | { ok: false; reason: string }>
+  /**
+   * Re-registra al server la subscription corrente del browser. Auto-heal
+   * silenzioso per il caso in cui il DB ha cancellato la riga
+   * (cleanup 410 dopo errore web-push) ma il browser ha ancora la sua
+   * subscription locale valida — situazione comune dopo gli incident push.
+   * Idempotente (POST /api/push/subscribe è upsert su member+endpoint).
+   * Restituisce true se ha trovato e ri-registrato una sub, false altrimenti.
+   */
+  reSync: () => Promise<boolean>
 }
 
 /**
@@ -237,5 +246,30 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
     }
   }, [support])
 
-  return { support, permission, isSubscribed, isPending, enable, disable }
+  const reSync = useCallback(async (): Promise<boolean> => {
+    if (support !== 'supported') return false
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const subscription = await reg.pushManager.getSubscription()
+      if (!subscription) return false
+      const json = subscription.toJSON()
+      if (!json.endpoint || !json.keys) return false
+      const res = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: json.endpoint,
+          keys: json.keys,
+        }),
+      })
+      return res.ok
+    } catch (err) {
+      // Silent: l'auto-heal è best-effort, non vogliamo disturbare l'utente
+      // se fallisce. Log per Eruda/console quando si fa il debug.
+      console.warn('[usePushSubscription] reSync failed:', err)
+      return false
+    }
+  }, [support])
+
+  return { support, permission, isSubscribed, isPending, enable, disable, reSync }
 }

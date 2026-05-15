@@ -60,6 +60,17 @@ export default function SettingsPage() {
       .catch(() => {})
   }, [member])
 
+  // Auto-heal: se l'utente ha notify_push=true e il browser ha una
+  // subscription locale, ri-registriamo silenziosamente al server. Copre
+  // il caso in cui il cleanup automatico ha cancellato la riga DB ma il
+  // browser ne ha ancora una valida (incident 2026-05-14). Idempotente
+  // server-side (upsert su member+endpoint).
+  useEffect(() => {
+    if (!notifyPush) return
+    if (!push.isSubscribed) return
+    push.reSync().catch(() => {})
+  }, [notifyPush, push.isSubscribed, push])
+
   if (!member) {
     return (
       <div className="flex h-dvh items-center justify-center bg-[#1a1a2e]">
@@ -323,6 +334,35 @@ export default function SettingsPage() {
               />
             </button>
           </div>
+
+          {/* Banner "riattiva su questo dispositivo" — appare quando la
+           * preferenza notify_push è true sul DB ma il browser di questo
+           * device NON ha una subscription attiva. Caso tipico: utente ha
+           * disinstallato e reinstallato la PWA, oppure ha cambiato device.
+           * Il flag notify_push resta true ma le push non arrivano qui.
+           * Tap → enable() rifa permesso + subscription + registra al server. */}
+          {notifyPush && !push.isSubscribed && push.support === 'supported' && push.permission !== 'denied' && (
+            <button
+              type="button"
+              disabled={push.isPending}
+              onClick={async () => {
+                const result = await push.enable()
+                if (!result.ok) {
+                  toast.error(result.reason)
+                  return
+                }
+                toast.success('Notifiche riattivate su questo dispositivo.')
+              }}
+              className="w-full text-left rounded-xl bg-amber-500/10 border border-amber-500/30 px-3 py-2.5 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+            >
+              <p className="text-[13px] font-medium text-amber-300">
+                Notifiche disattivate su questo dispositivo
+              </p>
+              <p className="text-[12px] text-amber-300/70 mt-0.5 leading-snug">
+                Le hai attive sul tuo profilo ma non su questo device. Tocca per riattivarle qui.
+              </p>
+            </button>
+          )}
 
           {/* Test push — visibile solo quando l'utente ha attivato le push.
            * Invia una notifica a sé stesso così l'utente può verificare il
