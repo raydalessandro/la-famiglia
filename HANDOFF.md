@@ -13,9 +13,15 @@ onboarding, niente concetti tecnici esposti.
 Aree principali:
 - **Bacheca** (`/feed`) — post (foto, ricette, storie). Like, reactions
   (❤️ 😄 👏), commenti. Lightbox foto + pagina post singolo `/feed/[id]`.
-- **Attività** (`/activities`) — eventi ricorrenti settimanali (es. "Pranzo
-  domenicale" ogni sabato), con presenze per membro.
-- **Agenda** (`/calendar`) — eventi one-shot con data specifica.
+- **Attività** (`/activities`) — vista settimanale unificata di attività
+  ricorrenti (es. "Piscina ogni sabato") + eventi one-off della settimana
+  corrente. Conferma presenze (Confermo / Salto / Modifico + nota) per
+  entrambi i tipi. Hook `useActivities` + `useWeekEvents`, componenti
+  `ActivityCard` ed `EventCard` con identica interazione.
+- **Agenda** (`/calendar`) — vista mensile a calendario. Mostra dots
+  colorati per ogni giorno e una sheet col dettaglio del giorno
+  selezionato. Read-only sulla presenza (la conferma avviene dalla
+  pagina Attività).
 - **Compiti** (`/tasks`) — to-do con assegnatari.
 - **Chat** (`/chat`, `/chat/[id]`) — dirette + gruppi, cluster WhatsApp.
 - **Famiglia** (`/family`, `/family/[id]`) — lista membri + profilo
@@ -154,9 +160,20 @@ Samsung Internet e desktop. Testata sui device della famiglia.
     raggruppati per `day_of_week` derivato; Calendario resta
     read-only mensile).
 
-**Cosa NON è ancora stato fatto e dove sta**: vista settimanale
-unificata parte 3 (UI). I follow-up minori 6.7–6.13 (no DB) restano
-parcheggiati nelle sezioni più sotto.
+**Vista settimanale unificata — parte 3 chiusa** (PR #49 + #51,
+mergiate 2026-05-15):
+- UI: nuovo hook `useWeekEvents` (settimana corrente, realtime su
+  `events` + `event_participants`), componenti `ActivityCard` +
+  `EventCard` con identica interazione "Confermo / Salto / Modifico
+  + nota" in `src/app/(main)/activities/page.tsx`.
+- Tab filter "Tutti / Eventi / Attività" sticky in cima alla pagina,
+  color-coded (giallo Attività, rosa Eventi).
+- Sheet di creazione condivisa `<CreateItemSheet>` con toggle interno
+  "Evento / Attività" usata sia da `/activities` sia da `/calendar`.
+  Default kind = quello della pagina corrente, swappabile in 1 tap.
+
+**Cosa NON è ancora stato fatto e dove sta**: i follow-up minori
+6.7–6.13 (no DB) restano parcheggiati nelle sezioni più sotto.
 
 ## Convenzioni — leggi PRIMA di scrivere codice
 
@@ -316,21 +333,52 @@ Home schermata (PWA installata, iOS 16.4+). Ogni reinstall invalida la
 subscription. Lato server è automatico: `sendPushNotification` pulisce
 le subscription scadute (410 / 404) dal DB al primo errore.
 
-## Attività vs Calendario — due moduli indipendenti
+## Attività vs Agenda — vista unificata sopra due tabelle
 
-`Attività` e `Agenda` sono due feature separate che leggono e scrivono su
-tabelle distinte:
+`activities` (ricorrenti settimanali) e `events` (one-off con data
+specifica) restano **due tabelle distinte** nel DB perché modellano
+concetti semanticamente diversi: ricorrenza vs istanza singola. Ma sopra
+di esse vivono due viste che le presentano in modo diverso all'utente:
 
-- **Attività** (`/activities`) → `activities` + `activity_participants` +
-  `activity_weekly_attendances`. Ricorrenti settimanali.
-- **Agenda** (`/calendar`) → `events`. One-shot con data specifica.
+- **Attività** (`/activities`, hook `useActivities` + `useWeekEvents`)
+  → vista settimanale unificata. Mostra entrambi i tipi raggruppati per
+  giorno, con identica interazione "Confermo / Salto / Modifico + nota".
+  Componenti `ActivityCard` per ricorrenti, `EventCard` per one-off,
+  entrambe in `src/app/(main)/activities/page.tsx`.
+- **Agenda** (`/calendar`, hook `useEvents` mensile) → calendario
+  mensile classico. Mostra dots colorati per ogni giorno e una sheet
+  con il dettaglio del giorno selezionato. Read-only sulla presenza
+  (la conferma avviene dalla pagina Attività).
 
-**Niente sincronizzazione bidirezionale.** Se servisse una vista unificata,
-va costruita lato lettura sopra entrambe le tabelle.
+**Modello dati**:
+- `activities` + `activity_participants` (metadata partecipanti
+  abituali, NON gate d'accesso) + `activity_weekly_attendances`
+  (risposta per (activity, week_start, member)) + `activity_roles`.
+- `events` + `event_participants` (dalla migration 015 fa doppio
+  uso: invitati storici legacy + risposte presenza con `status`).
 
-**Default participants**: un'attività senza riga in `activity_participants`
-viene mostrata con TUTTI i membri attivi come partecipanti. Per restringere
-il roster, popolare esplicitamente la tabella.
+**Modello di interazione (unico)**: tutti i membri loggati possono
+rispondere a qualunque attività o evento. Niente roster come gate.
+`activity_participants` resta come hint informativo ("chi normalmente
+fa parte"), `event_participants` accoglie le risposte.
+
+**Default participants per le card**: un'attività senza riga in
+`activity_participants` viene mostrata con TUTTI i membri attivi come
+partecipanti abituali. Per restringere, popolare esplicitamente la
+tabella.
+
+**Creazione (unificata)**: il "+" su entrambe le pagine apre lo stesso
+`<CreateItemSheet>` (`src/components/CreateItemSheet.tsx`) con toggle
+interno "Evento / Attività". Default kind = quello della pagina
+corrente (Attività su `/activities`, Evento su `/calendar`),
+swappabile in 1 tap. `defaultEventDate` precompila la data quando
+l'utente apre create da un giorno specifico del calendario. Il
+submit chiama la rotta giusta (`POST /api/activities` o
+`POST /api/events`) e la pagina si aggiorna via realtime.
+
+**Filtro vista**: tab segment "Tutti / Eventi / Attività" sticky in
+cima a `/activities`, color-coded (giallo per attività, rosa per
+eventi). Filtra la stessa grouped view senza ri-fetchare.
 
 ---
 
