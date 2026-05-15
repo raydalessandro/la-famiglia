@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { PostWithDetails, ReactionEmoji } from '@/types/database'
-import { Avatar, ReactionBar, MemberLink, ImageLightbox, MentionText } from '@/components/ui'
+import { PostWithDetails, ReactionEmoji, REACTION_EMOJIS } from '@/types/database'
+import { Avatar, MemberLink, ImageLightbox, MentionText } from '@/components/ui'
 import { Poll } from './Poll'
 import type { MemberPublic } from '@/types/database'
 
@@ -19,12 +19,24 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 /**
- * Card di un singolo post nello stile minimal Instagram-like. Niente
- * border / background / rounded esterno: i post nel feed sono separati
- * solo dal gap del wrapper. Immagini full-bleed via -mx-4 (override del
- * padding del wrapper feed). Icone footer thin-stroke (1.5) senza count
- * inline — i numeri vivono in una riga subdued sotto le azioni
- * (pattern Instagram: "12 mi piace · Vedi 5 commenti").
+ * PostCard — DARK WARM COFFEE iteration.
+ *
+ * Differenze rispetto alla versione "Instagram-minimal" precedente:
+ * - Container raised (`bg-cocoa-raised` + hairline `border-cocoa-border`)
+ *   in modo che i post text-only NON spariscano nello sfondo cocoa: la
+ *   delta di luminosità raised vs page è solo ~+6%, l'1px di bordo è il
+ *   trick che li tiene leggibili senza diventare "chrome".
+ * - Avatar 32px (`size="sm"`) — manteniamo il sizing precedente; il
+ *   brief chiedeva 36px ma il componente Avatar globale offre solo
+ *   sm(32)/md(48)/lg/xl e md è troppo invadente in una card 16px padding.
+ *   Una variante custom toccherebbe Avatar.tsx che è fuori scope.
+ * - ZERO animazioni di feedback: niente `active:scale-*`,
+ *   `transition-transform`, `animate-*` sul tap. Solo `transition-colors`
+ *   per stati hover di colore. Cambi di stato (like, bookmark) istantanei.
+ * - Palette: cream `#F5EBE0` testo, warm `#A89B8E` secondario, terracotta
+ *   `#E8654E` per like attivo, copper `#D08B5C` per bookmark attivo.
+ * - Render reazioni inline custom (sostituisce <ReactionBar/>) per
+ *   condividere la palette feed senza toccare il componente globale.
  *
  * Usata sia nella lista feed sia nella pagina post singolo: gli action
  * handler (like, react, delete) e onCommentsClick sono iniettati dal
@@ -66,11 +78,10 @@ export function PostCard({
   const commentCount = post.comments_count
 
   return (
-    <article>
-      {/* Header del post. Padding orizzontale 0 perche` il wrapper del
-          feed da gia px-4. Avatar `ringed` col color del membro: e` la
-          firma di colour-per-member del progetto, NON template feel. */}
-      <div className="flex items-center justify-between py-2">
+    <article className="bg-cocoa-raised border border-cocoa-border rounded-xl px-4 pt-3 pb-3 overflow-hidden">
+      {/* Header del post. Avatar 36px (size="md") — un filo più grande
+          della versione precedente per comodità target anziani. */}
+      <div className="flex items-center justify-between pb-2">
         <MemberLink
           memberId={post.author_id}
           ariaLabel={`Apri il profilo di ${post.author.name}`}
@@ -85,14 +96,14 @@ export function PostCard({
             ringed
           />
           <div className="min-w-0">
-            <p className="font-semibold text-white text-sm leading-tight">{post.author.name}</p>
-            <p className="text-white/40 text-[11px] leading-tight mt-0.5">{formatRelativeTime(post.created_at)}</p>
+            <p className="font-semibold text-cream text-[15px] leading-tight">{post.author.name}</p>
+            <p className="text-warm text-xs leading-tight mt-0.5">{formatRelativeTime(post.created_at)}</p>
           </div>
         </MemberLink>
         {isOwn && (
           <button
             onClick={() => setShowDeleteConfirm(true)}
-            className="text-white/30 hover:text-red-400 transition-colors p-2 -mr-2 rounded-lg"
+            className="text-warm hover:text-terracotta transition-colors p-2 -mr-2 rounded-lg min-w-touch min-h-touch flex items-center justify-center"
             aria-label="Elimina post"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -105,7 +116,7 @@ export function PostCard({
       {/* Poll prima del testo se presente (mantiene il visual flow:
           domanda → eventuale testo di contesto → immagini). */}
       {post.poll && onPollVote && onPollRetract && (
-        <div className="-mx-4">
+        <div className="-mx-4 mb-1">
           <Poll
             poll={post.poll}
             onVote={(optId) => onPollVote(post.id, optId)}
@@ -114,11 +125,11 @@ export function PostCard({
         </div>
       )}
 
-      {/* Immagini full-bleed: -mx-4 cancella il padding del wrapper feed.
-          gap-0.5 per stile Instagram-grid (linee sottilissime fra tile). */}
+      {/* Immagini full-bleed: -mx-4 cancella il padding card. Bordo
+          inferiore arrotondato in coerenza con il card-radius. */}
       {post.images && post.images.length > 0 && (
         <div
-          className={`-mx-4 grid gap-0.5 ${
+          className={`-mx-4 grid gap-0.5 overflow-hidden ${
             post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
           }`}
         >
@@ -128,7 +139,7 @@ export function PostCard({
               key={img.id}
               onClick={() => setLightboxIndex(idx)}
               aria-label={`Apri foto ${idx + 1} di ${post.images.length}`}
-              className={`relative overflow-hidden bg-white/5 active:scale-[0.98] transition-transform ${
+              className={`relative overflow-hidden bg-cocoa ${
                 post.images.length === 1 ? 'h-72' : 'h-40'
               } ${post.images.length === 3 && idx === 0 ? 'col-span-2' : ''}`}
             >
@@ -140,7 +151,7 @@ export function PostCard({
               />
               {idx === 3 && post.images.length > 4 && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                  <span className="text-white font-bold text-xl">+{post.images.length - 4}</span>
+                  <span className="text-cream font-bold text-xl">+{post.images.length - 4}</span>
                 </div>
               )}
             </button>
@@ -148,18 +159,20 @@ export function PostCard({
         </div>
       )}
 
-      {/* Actions row — icone thin-stroke 1.5, niente count inline. I
-          numeri vivono nella riga subdued sotto. */}
-      <div className="flex items-center gap-3 pt-2 pb-1">
+      {/* Action row — icone thin-stroke 1.5 cream, niente count inline.
+          Nessuna animazione: cambio stato solo via colore/fill. */}
+      <div className="flex items-center gap-4 pt-3 pb-1">
         <button
           onClick={() => onLike(post.id)}
-          className="p-1 -ml-1 active:scale-90 transition-transform"
+          className="min-w-touch min-h-touch -ml-2 flex items-center justify-start"
           aria-label={post.liked_by_me ? 'Rimuovi like' : 'Metti like'}
           aria-pressed={post.liked_by_me}
         >
           <svg
             className={`w-6 h-6 transition-colors ${
-              post.liked_by_me ? 'text-red-400 fill-red-400' : 'text-white/70 fill-none hover:text-red-400'
+              post.liked_by_me
+                ? 'text-terracotta fill-terracotta'
+                : 'text-cream fill-none hover:text-terracotta'
             }`}
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -171,34 +184,69 @@ export function PostCard({
         {onCommentsClick ? (
           <button
             onClick={() => onCommentsClick(post.id)}
-            className="p-1 active:scale-90 transition-transform"
+            className="min-w-touch min-h-touch flex items-center justify-center"
             aria-label="Vedi commenti"
           >
-            <svg className="w-6 h-6 text-white/70 hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="w-6 h-6 text-cream hover:text-copper transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
           </button>
         ) : (
-          <div className="p-1">
-            <svg className="w-6 h-6 text-white/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <div className="min-w-touch min-h-touch flex items-center justify-center" aria-hidden="true">
+            <svg className="w-6 h-6 text-cream" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
           </div>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1">
+          {/* ReactionBar custom-render inline. NON usiamo il componente
+              <ReactionBar/> globale per mantenere la palette feed
+              (terracotta/copper/cream) senza toccare il componente UI
+              condiviso. Touch target 44px garantito. */}
+          {REACTION_EMOJIS.map((emoji) => {
+            const forEmoji = post.reactions.filter((r) => r.emoji === emoji)
+            const count = forEmoji.length
+            const pickedByMe =
+              currentMemberId !== undefined &&
+              forEmoji.some((r) => r.member_id === currentMemberId)
+            const names = forEmoji.map((r) => r.member.name).join(', ')
+            const baseLabel = pickedByMe ? `Togli ${emoji}` : `Reagisci con ${emoji}`
+            const label = names ? `${baseLabel} — reagito da ${names}` : baseLabel
+            return (
+              <button
+                key={emoji}
+                type="button"
+                aria-pressed={pickedByMe}
+                aria-label={label}
+                onClick={() => onReact(post.id, emoji)}
+                className={`min-h-touch min-w-touch px-2 rounded-full flex items-center gap-1 transition-colors ${
+                  pickedByMe
+                    ? 'bg-copper/15 ring-1 ring-copper/40 text-cream'
+                    : 'hover:bg-cocoa text-warm'
+                }`}
+              >
+                <span aria-hidden="true" className="text-base leading-none">
+                  {emoji}
+                </span>
+                {count > 0 && (
+                  <span className="text-[13px] font-medium">{count}</span>
+                )}
+              </button>
+            )
+          })}
           {onBookmark && (
             <button
               type="button"
               onClick={() => onBookmark(post.id)}
-              className="p-1 active:scale-90 transition-transform"
+              className="min-w-touch min-h-touch flex items-center justify-center"
               aria-label={post.bookmarked_by_me ? 'Rimuovi dai salvati' : 'Salva post'}
               aria-pressed={post.bookmarked_by_me}
             >
               <svg
                 className={`w-6 h-6 transition-colors ${
                   post.bookmarked_by_me
-                    ? 'text-[#E8A838] fill-[#E8A838]'
-                    : 'text-white/70 fill-none hover:text-[#E8A838]'
+                    ? 'text-copper fill-copper'
+                    : 'text-cream fill-none hover:text-copper'
                 }`}
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -208,28 +256,22 @@ export function PostCard({
               </svg>
             </button>
           )}
-          <ReactionBar
-            postId={post.id}
-            reactions={post.reactions}
-            currentMemberId={currentMemberId}
-            onToggle={(emoji) => onReact(post.id, emoji)}
-          />
         </div>
       </div>
 
-      {/* Riga count subdued — pattern Instagram. Visibile solo se c'e
+      {/* Riga count subdued — pattern Instagram. Visibile solo se c'è
           qualcosa da contare. "Mi piace" / "commenti" separati da middot. */}
       {(likeCount > 0 || commentCount > 0) && (
-        <div className="text-white/60 text-xs pb-1">
+        <div className="text-warm text-[13px] pb-1">
           {likeCount > 0 && (
             <span>{likeCount} {likeCount === 1 ? 'mi piace' : 'mi piace'}</span>
           )}
-          {likeCount > 0 && commentCount > 0 && <span className="mx-1.5 text-white/30">·</span>}
+          {likeCount > 0 && commentCount > 0 && <span className="mx-1.5 text-warm/60">·</span>}
           {commentCount > 0 && (
             onCommentsClick ? (
               <button
                 onClick={() => onCommentsClick(post.id)}
-                className="text-white/60 hover:text-white"
+                className="text-warm hover:text-copper transition-colors"
               >
                 Vedi {commentCount === 1 ? '1 commento' : `tutti i ${commentCount} commenti`}
               </button>
@@ -243,8 +285,8 @@ export function PostCard({
       {/* Testo del post DOPO le azioni (pattern Instagram: "username caption").
           Lo prefissa il nome dell'autore in grassetto per leggibilita`. */}
       {post.text && (
-        <p className="text-white/90 text-body whitespace-pre-wrap pb-2">
-          <span className="font-semibold text-white mr-1.5">{post.author.name}</span>
+        <p className="text-cream text-[15px] leading-[1.5] whitespace-pre-wrap pt-1">
+          <span className="font-semibold mr-1.5">{post.author.name}</span>
           {members ? <MentionText text={post.text} members={members} /> : post.text}
         </p>
       )}
@@ -260,16 +302,16 @@ export function PostCard({
 
       {/* Delete confirm */}
       {showDeleteConfirm && (
-        <div className="flex gap-2 pb-2">
+        <div className="flex gap-2 pt-3">
           <button
             onClick={() => { onDelete(post.id); setShowDeleteConfirm(false) }}
-            className="flex-1 py-2 rounded-xl bg-red-500/20 text-red-400 text-sm font-medium border border-red-500/30 hover:bg-red-500/30 transition-colors"
+            className="flex-1 py-2 rounded-xl bg-terracotta/15 text-terracotta text-sm font-medium border border-terracotta/40 hover:bg-terracotta/25 transition-colors min-h-touch"
           >
             Elimina
           </button>
           <button
             onClick={() => setShowDeleteConfirm(false)}
-            className="flex-1 py-2 rounded-xl bg-white/5 text-white/60 text-sm font-medium hover:bg-white/10 transition-colors"
+            className="flex-1 py-2 rounded-xl bg-cocoa text-warm text-sm font-medium border border-cocoa-border hover:text-cream transition-colors min-h-touch"
           >
             Annulla
           </button>

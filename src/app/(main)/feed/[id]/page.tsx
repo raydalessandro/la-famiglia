@@ -8,7 +8,6 @@ import {
   Avatar,
   Button,
   EmptyState,
-  Header,
   MemberLink,
   MentionText,
   PostCardSkeleton,
@@ -37,6 +36,14 @@ function formatRelativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })
 }
 
+/**
+ * CommentRow — DARK WARM COFFEE iteration.
+ *
+ * Ogni commento ora vive in una card raised `bg-cocoa-raised` con hairline
+ * `border-cocoa-border` rounded-xl. Niente più color-per-member sul nome
+ * (mantiene il mood minimal del feed) — il colore membro vive solo
+ * sull'avatar ringed. Timestamp warm-gray fuori card per leggerezza.
+ */
 function CommentRow({
   comment,
   members,
@@ -47,7 +54,7 @@ function CommentRow({
   members: Pick<MemberPublic, 'id' | 'name'>[]
 }) {
   return (
-    <div className="flex gap-3 px-4 py-3">
+    <div className="flex gap-3 px-4">
       <MemberLink
         memberId={comment.author_id}
         ariaLabel={`Apri il profilo di ${comment.author.name}`}
@@ -61,23 +68,20 @@ function CommentRow({
         />
       </MemberLink>
       <div className="flex-1 min-w-0">
-        <div className="bg-surface-raised rounded-card px-3 py-2 border border-white/5">
+        <div className="bg-cocoa-raised rounded-xl px-3 py-2 border border-cocoa-border">
           <MemberLink
             memberId={comment.author_id}
             ariaLabel={`Apri il profilo di ${comment.author.name}`}
           >
-            <span
-              className="text-[13px] font-semibold"
-              style={{ color: comment.author.color || '#E8A838' }}
-            >
+            <span className="text-[13px] font-semibold text-cream">
               {comment.author.name}
             </span>
           </MemberLink>
-          <p className="text-white/90 text-body whitespace-pre-wrap mt-0.5">
+          <p className="text-cream text-[15px] leading-[1.5] whitespace-pre-wrap mt-0.5">
             <MentionText text={comment.text} members={members} />
           </p>
         </div>
-        <p className="text-white/40 text-xs mt-1 ml-2">
+        <p className="text-warm text-xs mt-1 ml-2">
           {formatRelativeTime(comment.created_at)}
         </p>
       </div>
@@ -243,11 +247,47 @@ export default function PostPage() {
     [router, toast],
   )
 
-  return (
-    <div className="flex min-h-dvh flex-col bg-surface">
-      <Header title="Post" showBack />
+  // Conta commenti per il sub-title nell'header. Mostriamo "1 commento" /
+  // "5 commenti" coerente con la riga subdued del PostCard.
+  const commentCountLabel = (() => {
+    const n = comments.length
+    if (n === 0) return null
+    return n === 1 ? '1 commento' : `${n} commenti`
+  })()
 
-      <main className="flex-1 flex flex-col">
+  return (
+    <div className="flex min-h-dvh flex-col bg-cocoa">
+      {/* Custom serif italic header — stessa identità del wordmark
+          "La Famiglia" del feed (Lora 500 italic + cream). Sticky con
+          backdrop-blur + bg cocoa/95. NON usiamo il componente
+          <Header /> globale perché ha palette navy / chrome generico e
+          rompe la coerenza con la palette feed. Back arrow thin-stroke
+          1.5 cream, hover copper. */}
+      <header className="sticky top-0 z-30 bg-cocoa/95 backdrop-blur">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="flex h-11 w-11 -ml-2 items-center justify-center rounded-full text-cream hover:text-copper transition-colors"
+            aria-label="Indietro"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="min-w-0 flex items-baseline gap-2">
+            <h1 className="font-serif italic font-medium text-cream text-[24px] leading-none tracking-tight">
+              Commenti
+            </h1>
+            {commentCountLabel && (
+              <span className="text-warm text-[13px]">· {commentCountLabel}</span>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* pb-24 lascia spazio al composer sticky in fondo. */}
+      <main className="flex-1 flex flex-col pb-24">
         {isLoadingPost ? (
           <div className="p-4">
             <PostCardSkeleton />
@@ -261,7 +301,7 @@ export default function PostPage() {
           />
         ) : (
           <>
-            <div className="p-4">
+            <div className="px-4 pt-3">
               <PostCard
                 post={post}
                 currentMemberId={member?.id}
@@ -274,37 +314,43 @@ export default function PostPage() {
               />
             </div>
 
-            {/* Comments */}
-            <div className="border-t border-white/5 mt-2">
-              <h2 className="px-4 pt-3 pb-2 text-white/60 text-caption font-semibold uppercase tracking-wide">
+            {/* Commenti — gap-2 (8px) tra le card per densità ottimale
+                della lista. Niente border-top separator: la separazione
+                è semantica via spacing + il titolo serif sopra. */}
+            <section className="mt-4 flex flex-col gap-2">
+              <h2 className="px-4 text-warm text-[13px] font-semibold uppercase tracking-wide">
                 Commenti
               </h2>
               {isLoadingComments ? (
-                <div className="flex flex-col gap-3 px-4 py-2">
-                  <Skeleton className="h-16 rounded-card" />
-                  <Skeleton className="h-16 rounded-card" />
+                <div className="flex flex-col gap-2 px-4 py-1">
+                  <Skeleton className="h-16 rounded-xl" />
+                  <Skeleton className="h-16 rounded-xl" />
                 </div>
               ) : comments.length === 0 ? (
-                <p className="text-white/40 text-body text-center py-8 px-6">
+                <p className="text-warm text-[15px] text-center py-8 px-6">
                   Nessun commento. Sii il primo a rispondere.
                 </p>
               ) : (
-                <div className="flex flex-col">
+                <div className="flex flex-col gap-2 pb-2">
                   {comments.map((c) => (
                     <CommentRow key={c.id} comment={c} members={members} />
                   ))}
                 </div>
               )}
-            </div>
+            </section>
           </>
         )}
       </main>
 
-      {/* Comment composer fixed at the bottom — only when post exists */}
+      {/* Composer fisso in fondo — bg-cocoa/95 + backdrop-blur per non
+          schiacciare visivamente il contenuto sottostante. Textarea
+          cocoa-raised con bordo cocoa-border, focus copper. Bottone
+          solid copper con testo dark cocoa: contrasto ~10:1, AA solid.
+          Niente active:scale — disabled state via opacità + cursor. */}
       {post && member && (
         <form
           onSubmit={handleSubmit}
-          className="sticky bottom-0 bg-surface/95 backdrop-blur border-t border-white/10 px-3 py-2 flex items-end gap-2"
+          className="sticky bottom-0 bg-cocoa/95 backdrop-blur border-t border-cocoa-border px-3 py-2 pb-safe flex items-end gap-2"
         >
           <Avatar
             emoji={member.avatar_emoji}
@@ -318,17 +364,15 @@ export default function PostPage() {
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Scrivi un commento…"
             rows={1}
-            className="flex-1 bg-surface-sunken text-white text-body placeholder:text-white/30 rounded-bubble px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-accent/40 min-h-touch"
+            className="flex-1 bg-cocoa-raised border border-cocoa-border text-cream text-[15px] placeholder:text-warm rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-copper min-h-touch"
           />
           <button
             type="submit"
             disabled={!draft.trim() || isSending}
-            className="min-h-touch min-w-touch rounded-full bg-accent text-surface font-semibold flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all"
-            aria-label="Invia commento"
+            className="min-h-touch px-4 rounded-xl bg-copper text-cocoa font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-copper-hover transition-colors"
+            aria-label="Pubblica commento"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l14-7-7 14-2-5-5-2z" />
-            </svg>
+            Pubblica
           </button>
         </form>
       )}

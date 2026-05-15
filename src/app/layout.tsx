@@ -1,9 +1,23 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Lora } from 'next/font/google'
 import { ErudaDevtools } from '@/components/debug/ErudaDevtools'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
+
+// Lora — serif italic con tratto più caldo di Georgia default. Usata SOLO
+// per il wordmark "La Famiglia" e gli header serif italic del feed. Wired
+// come CSS variable in modo che `font-serif` di Tailwind la pesca
+// automaticamente (cfr. tailwind.config.ts → fontFamily.serif). Display
+// `swap` perché il wordmark è above-the-fold: meglio FOUT con Georgia che
+// invisibile per 300ms.
+const lora = Lora({
+  subsets: ['latin'],
+  weight: ['500'],
+  style: ['italic'],
+  variable: '--font-serif',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'La Famiglia',
@@ -29,7 +43,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="it">
+    <html lang="it" className={lora.variable}>
       {/* Debug-only on-device console. Opt-in via ?debug=1 — invisible
        * agli utenti normali. Posizionato a livello <html> (non dentro
        * <head>) perché Next App Router gestisce automaticamente

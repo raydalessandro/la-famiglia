@@ -219,21 +219,21 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] pb-24">
-      {/* Header — display title "La Famiglia" in serif italic light per
-          dare identita` tipo Instagram/Threads (la pagina principale
-          parla il nome del prodotto, non l'etichetta della sezione).
-          Niente border-bottom: l'header fluisce nel contenuto. Una sola
-          icona azione (segnalibro per /saved) thin-stroke. */}
-      <div className="sticky top-0 z-30 bg-[#1a1a2e]/95 backdrop-blur">
+    <div className="min-h-screen bg-cocoa pb-24">
+      {/* Header — wordmark "La Famiglia" in Lora serif italic (più calda
+          di Georgia default). Sticky con backdrop-blur + bg cocoa/95 in
+          modo che il contenuto sottostante non bleed visibile durante lo
+          scroll. z-30 == BottomNav, < BottomSheet (z-40/50): nessun
+          conflitto. Una sola action a destra (bookmark → /saved). */}
+      <div className="sticky top-0 z-30 bg-cocoa/95 backdrop-blur">
         <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="font-serif italic font-light text-white text-[26px] leading-none tracking-tight">
+          <h1 className="font-serif italic font-medium text-cream text-[28px] leading-none tracking-tight">
             La Famiglia
           </h1>
           <button
             type="button"
             onClick={() => router.push('/saved')}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:text-[#E8A838] hover:bg-white/5 transition-colors"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-cream hover:text-copper transition-colors"
             aria-label="Apri post salvati"
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -246,7 +246,8 @@ export default function FeedPage() {
       {/* Banner compleanni — visibile solo se almeno un membro di
        * famiglia compie gli anni oggi. Tap → /family/[id] del
        * festeggiato (deep link al profilo). Più festeggiati →
-       * un card per ciascuno. */}
+       * un card per ciascuno. Palette cocoa-warm: bordo copper subdued,
+       * fill copper/8 (gradient discreto). Niente animazioni sul tap. */}
       {birthdaysToday.length > 0 && (
         <div className="px-4 pt-4 flex flex-col gap-2">
           {birthdaysToday.map((b) => (
@@ -254,12 +255,11 @@ export default function FeedPage() {
               key={b.id}
               type="button"
               onClick={() => router.push(`/family/${b.id}`)}
-              className="w-full text-left rounded-2xl border border-[#E8A838]/30 bg-gradient-to-r from-[#E8A838]/15 to-[#E8A838]/5 px-4 py-3 transition-colors hover:from-[#E8A838]/25"
+              className="w-full text-left rounded-xl border border-copper/40 bg-copper/10 px-4 py-3 transition-colors hover:bg-copper/15"
               aria-label={`Apri profilo di ${b.name}`}
             >
-              <p className="text-sm text-white">
-                <span className="mr-1.5 text-base">🎉</span>
-                Oggi <span className="font-semibold text-[#E8A838]">{b.name}</span>{' '}
+              <p className="text-[15px] text-cream">
+                Oggi <span className="font-semibold text-copper">{b.name}</span>{' '}
                 {b.id === member?.id ? (
                   <>compi <span className="font-semibold">{b.age}</span> anni. Auguri!</>
                 ) : (
@@ -271,8 +271,9 @@ export default function FeedPage() {
         </div>
       )}
 
-      {/* Posts */}
-      <div className="px-4 py-4 flex flex-col gap-4">
+      {/* Posts — gap-3 (12px) per densità senza claustrofobia. Le card
+          si separano da sole grazie al raised bg + hairline border. */}
+      <div className="px-4 py-4 flex flex-col gap-3">
         {isLoading && posts.length === 0 ? (
           Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)
         ) : posts.length === 0 ? (
@@ -308,21 +309,28 @@ export default function FeedPage() {
 
         {hasMore && (
           <div ref={bottomRef} className="flex justify-center py-4">
-            <div className="w-6 h-6 border-2 border-[#E8A838]/40 border-t-[#E8A838] rounded-full animate-spin" />
+            {/* Spinner: usa animate-spin perché è un loader continuo, NON
+                un feedback al tap (la regola "zero animazioni" del brief
+                vieta animation di feedback su tap, non i loader). */}
+            <div className="w-6 h-6 border-2 border-copper/40 border-t-copper rounded-full animate-spin" />
           </div>
         )}
       </div>
 
-      {/* FAB */}
+      {/* FAB — solido copper su cocoa scuro. Niente active:scale (vietato
+          dal brief): cambio di colore al hover, basta. */}
       <button
         onClick={() => setSheetOpen(true)}
-        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-copper flex items-center justify-center text-cocoa text-2xl font-bold hover:bg-copper-hover transition-colors"
         aria-label="Crea post"
       >
         +
       </button>
 
-      {/* Create Post BottomSheet */}
+      {/* Create Post BottomSheet — composer cocoa. Notare: BottomSheet
+          globale rimane navy (bg-[#1a1a2e] hardcoded in BottomSheet.tsx,
+          fuori scope). Il content qui dentro adotta la palette feed
+          comunque per coerenza visiva quando l'utente apre il composer. */}
       <BottomSheet isOpen={sheetOpen} onClose={handleClose} title="Nuovo post">
         <div className="flex flex-col gap-4 pt-2">
           {/* Author */}
@@ -335,20 +343,20 @@ export default function FeedPage() {
                 size="sm"
                 color={member.color}
               />
-              <span className="text-white font-medium text-sm">{member.name}</span>
+              <span className="text-cream font-medium text-[15px]">{member.name}</span>
             </div>
           )}
 
-          {/* Post type selector */}
+          {/* Post type selector — pill copper attivo, cocoa-raised idle. */}
           <div className="flex gap-2">
             {(['normal', 'recipe', 'story'] as const).map((type) => (
               <button
                 key={type}
                 onClick={() => setFormType(type)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                   formType === type
-                    ? 'bg-[#E8A838] text-[#1a1a2e] border-[#E8A838]'
-                    : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                    ? 'bg-copper text-cocoa border-copper'
+                    : 'bg-cocoa-raised text-warm border-cocoa-border hover:text-cream'
                 }`}
               >
                 {type === 'normal' ? 'Normale' : type === 'recipe' ? '🍳 Ricetta' : '📖 Racconto'}
@@ -362,18 +370,18 @@ export default function FeedPage() {
             onChange={(e) => setFormText(e.target.value)}
             placeholder="Scrivi qualcosa..."
             rows={4}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-body resize-none focus:outline-none focus:border-[#E8A838]/60"
+            className="w-full bg-cocoa-raised border border-cocoa-border rounded-xl px-4 py-3 text-cream placeholder-warm text-body resize-none focus:outline-none focus:border-copper"
           />
 
           {/* Image previews */}
           {formPreviews.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {formPreviews.map((src, i) => (
-                <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border border-white/10">
+                <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border border-cocoa-border">
                   <img src={src} alt="" className="w-full h-full object-cover" />
                   <button
                     onClick={() => handleRemoveImage(i)}
-                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs flex items-center justify-center"
+                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-cream text-xs flex items-center justify-center"
                   >
                     x
                   </button>
@@ -397,7 +405,7 @@ export default function FeedPage() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed border-white/20 text-white/50 text-sm hover:border-[#E8A838]/50 hover:text-[#E8A838] transition-colors"
+            className="flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed border-cocoa-border text-warm text-sm hover:border-copper hover:text-copper transition-colors min-h-touch"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -408,10 +416,10 @@ export default function FeedPage() {
           {/* Poll toggle + form */}
           <button
             onClick={() => setPollEnabled((v) => !v)}
-            className={`flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed text-sm transition-colors ${
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed text-sm transition-colors min-h-touch ${
               pollEnabled
-                ? 'border-[#E8A838]/60 text-[#E8A838]'
-                : 'border-white/20 text-white/50 hover:border-[#E8A838]/50 hover:text-[#E8A838]'
+                ? 'border-copper text-copper'
+                : 'border-cocoa-border text-warm hover:border-copper hover:text-copper'
             }`}
             aria-pressed={pollEnabled}
             aria-label={pollEnabled ? 'Rimuovi sondaggio' : 'Aggiungi sondaggio'}
@@ -421,18 +429,18 @@ export default function FeedPage() {
           </button>
 
           {pollEnabled && (
-            <div className="flex flex-col gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+            <div className="flex flex-col gap-4 p-4 rounded-xl bg-cocoa border border-cocoa-border">
               {/* Header del blocco — separa visivamente dal resto del composer,
                   così è chiaro che la domanda e le opzioni qui dentro NON
                   sono il testo del post ma il sondaggio. */}
-              <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+              <div className="flex items-center gap-2 pb-2 border-b border-cocoa-border">
                 <span aria-hidden="true" className="text-base">📊</span>
-                <h3 className="text-sm font-semibold text-white">Sondaggio</h3>
+                <h3 className="text-sm font-semibold text-cream">Sondaggio</h3>
               </div>
 
               {/* Domanda */}
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="poll-question" className="text-caption text-white/70 font-medium">
+                <label htmlFor="poll-question" className="text-caption text-warm font-medium">
                   Domanda
                 </label>
                 <input
@@ -441,13 +449,13 @@ export default function FeedPage() {
                   onChange={(e) => setPollQuestion(e.target.value)}
                   placeholder="Es. Dove andiamo a cena sabato?"
                   maxLength={200}
-                  className="w-full bg-surface-sunken border border-white/10 rounded-lg px-3 py-2.5 text-white placeholder-white/40 text-body focus:outline-none focus:border-[#E8A838]/60"
+                  className="w-full bg-cocoa-raised border border-cocoa-border rounded-lg px-3 py-2.5 text-cream placeholder-warm text-body focus:outline-none focus:border-copper"
                 />
               </div>
 
               {/* Risposte possibili */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-caption text-white/70 font-medium">
+                <label className="text-caption text-warm font-medium">
                   Risposte possibili ({MIN_POLL_OPTIONS}–{MAX_POLL_OPTIONS})
                 </label>
                 <div className="flex flex-col gap-2">
@@ -459,12 +467,12 @@ export default function FeedPage() {
                         placeholder={`Risposta ${idx + 1}`}
                         maxLength={100}
                         aria-label={`Risposta ${idx + 1}`}
-                        className="flex-1 bg-surface-sunken border border-white/10 rounded-lg px-3 py-2 text-white placeholder-white/40 text-body focus:outline-none focus:border-[#E8A838]/60"
+                        className="flex-1 bg-cocoa-raised border border-cocoa-border rounded-lg px-3 py-2 text-cream placeholder-warm text-body focus:outline-none focus:border-copper"
                       />
                       {pollOptions.length > MIN_POLL_OPTIONS && (
                         <button
                           onClick={() => handleRemovePollOption(idx)}
-                          className="shrink-0 w-9 h-9 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/50 hover:text-red-400 transition-colors flex items-center justify-center"
+                          className="shrink-0 w-11 h-11 rounded-lg bg-cocoa-raised hover:bg-terracotta/20 text-warm hover:text-terracotta transition-colors flex items-center justify-center"
                           aria-label={`Rimuovi risposta ${idx + 1}`}
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -478,7 +486,7 @@ export default function FeedPage() {
                 {pollOptions.length < MAX_POLL_OPTIONS && (
                   <button
                     onClick={handleAddPollOption}
-                    className="self-start mt-1 flex items-center gap-1.5 text-sm text-[#E8A838] hover:text-[#E8A838]/80 transition-colors"
+                    className="self-start mt-1 flex items-center gap-1.5 text-sm text-copper hover:text-copper-hover transition-colors min-h-touch"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -494,21 +502,21 @@ export default function FeedPage() {
                   type="checkbox"
                   checked={pollMultiChoice}
                   onChange={(e) => setPollMultiChoice(e.target.checked)}
-                  className="w-4 h-4 accent-[#E8A838]"
+                  className="w-4 h-4 accent-copper"
                 />
-                <span className="text-sm text-white/80">Permetti di scegliere più risposte</span>
+                <span className="text-sm text-cream">Permetti di scegliere più risposte</span>
               </label>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="poll-closes" className="text-caption text-white/70 font-medium">
-                  Chiusura sondaggio <span className="text-white/40 font-normal">(opzionale)</span>
+                <label htmlFor="poll-closes" className="text-caption text-warm font-medium">
+                  Chiusura sondaggio <span className="text-warm/70 font-normal">(opzionale)</span>
                 </label>
                 <input
                   id="poll-closes"
                   type="datetime-local"
                   value={pollClosesAt}
                   onChange={(e) => setPollClosesAt(e.target.value)}
-                  className="w-full bg-surface-sunken border border-white/10 rounded-lg px-3 py-2 text-white text-body focus:outline-none focus:border-[#E8A838]/60"
+                  className="w-full bg-cocoa-raised border border-cocoa-border rounded-lg px-3 py-2 text-cream text-body focus:outline-none focus:border-copper"
                 />
               </div>
             </div>
