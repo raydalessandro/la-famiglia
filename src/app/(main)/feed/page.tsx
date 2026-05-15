@@ -219,24 +219,31 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] pb-24">
-      {/* Header — display title "La Famiglia" in serif italic light per
-          dare identita` tipo Instagram/Threads (la pagina principale
-          parla il nome del prodotto, non l'etichetta della sezione).
-          Niente border-bottom: l'header fluisce nel contenuto. Una sola
-          icona azione (segnalibro per /saved) thin-stroke. */}
-      <div className="sticky top-0 z-30 bg-[#1a1a2e]/95 backdrop-blur">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="font-serif italic font-light text-white text-[26px] leading-none tracking-tight">
+    <div className="min-h-screen bg-black pb-24">
+      {/* Header — wordmark "La Famiglia" in font Sacramento (closest
+          open-source a Billabong, il vecchio logo Instagram). Sticky,
+          fondo nero opaco — Instagram NON usa backdrop-blur sull'header:
+          e` netto, non semi-trasparente. Z-30 coerente con altri sticky
+          dell'app, sotto FAB (z-30) di default ma il FAB e` posizionato
+          piu` in basso quindi non collide.
+          Touch target del bookmark 44x44 (h-11 w-11). */}
+      <div className="sticky top-0 z-30 bg-black">
+        <div className="flex items-center justify-between px-4 py-2">
+          <h1
+            className="font-sacramento text-white text-[34px] leading-none"
+            // Lieve trim verticale per evitare che la coda della "g" di
+            // "Famiglia" venga clippata da line-height ridotto.
+            style={{ paddingTop: '6px', paddingBottom: '2px' }}
+          >
             La Famiglia
           </h1>
           <button
             type="button"
             onClick={() => router.push('/saved')}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-white/70 hover:text-[#E8A838] hover:bg-white/5 transition-colors"
+            className="flex h-11 w-11 items-center justify-center text-white hover:text-[#A8A8A8] transition-colors"
             aria-label="Apri post salvati"
           >
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-4-7 4V5z" />
             </svg>
           </button>
@@ -245,21 +252,19 @@ export default function FeedPage() {
 
       {/* Banner compleanni — visibile solo se almeno un membro di
        * famiglia compie gli anni oggi. Tap → /family/[id] del
-       * festeggiato (deep link al profilo). Più festeggiati →
-       * un card per ciascuno. */}
+       * festeggiato. Niente animazioni feedback, solo hover di colore. */}
       {birthdaysToday.length > 0 && (
-        <div className="px-4 pt-4 flex flex-col gap-2">
+        <div className="px-4 pt-3 flex flex-col gap-2">
           {birthdaysToday.map((b) => (
             <button
               key={b.id}
               type="button"
               onClick={() => router.push(`/family/${b.id}`)}
-              className="w-full text-left rounded-2xl border border-[#E8A838]/30 bg-gradient-to-r from-[#E8A838]/15 to-[#E8A838]/5 px-4 py-3 transition-colors hover:from-[#E8A838]/25"
+              className="w-full text-left border border-[#262626] bg-[#0a0a0a] px-4 py-3 hover:bg-[#121212] transition-colors"
               aria-label={`Apri profilo di ${b.name}`}
             >
-              <p className="text-sm text-white">
-                <span className="mr-1.5 text-base">🎉</span>
-                Oggi <span className="font-semibold text-[#E8A838]">{b.name}</span>{' '}
+              <p className="text-[15px] text-white">
+                Oggi <span className="font-semibold">{b.name}</span>{' '}
                 {b.id === member?.id ? (
                   <>compi <span className="font-semibold">{b.age}</span> anni. Auguri!</>
                 ) : (
@@ -271,21 +276,28 @@ export default function FeedPage() {
         </div>
       )}
 
-      {/* Posts */}
-      <div className="px-4 py-4 flex flex-col gap-4">
+      {/* Posts — gap-1 (4px) di bg nero tra una card e l'altra.
+          Instagram non mette hairline tra post: il gap nero basta come
+          separatore. Niente padding orizzontale qui — le card hanno il
+          loro px-4 interno e le foto sono full-bleed (edge-to-edge). */}
+      <div className="pt-1 flex flex-col gap-1">
         {isLoading && posts.length === 0 ? (
-          Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)
+          <div className="px-4 flex flex-col gap-4 pt-3">
+            {Array.from({ length: 3 }).map((_, i) => <PostCardSkeleton key={i} />)}
+          </div>
         ) : posts.length === 0 ? (
-          <EmptyState
-            icon="📝"
-            title="La bacheca è vuota"
-            description="Condividi una foto, una storia o una ricetta — sarà visibile solo alla famiglia."
-            action={
-              <Button onClick={() => setSheetOpen(true)}>
-                Scrivi il primo post
-              </Button>
-            }
-          />
+          <div className="px-4 pt-6">
+            <EmptyState
+              icon="📝"
+              title="La bacheca è vuota"
+              description="Condividi una foto, una storia o una ricetta — sarà visibile solo alla famiglia."
+              action={
+                <Button onClick={() => setSheetOpen(true)}>
+                  Scrivi il primo post
+                </Button>
+              }
+            />
+          </div>
         ) : (
           posts.map((post) => (
             <PostCard
@@ -308,15 +320,19 @@ export default function FeedPage() {
 
         {hasMore && (
           <div ref={bottomRef} className="flex justify-center py-4">
-            <div className="w-6 h-6 border-2 border-[#E8A838]/40 border-t-[#E8A838] rounded-full animate-spin" />
+            {/* Spinner — `animate-spin` e` parte del loading state, non
+                un feedback di tap. Brief consente le animazioni di
+                loading; vietate sono solo quelle di tap/click. */}
+            <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin" />
           </div>
         )}
       </div>
 
-      {/* FAB */}
+      {/* FAB — niente active:scale (brief: no animazioni feedback click).
+          Solo hover-color. Resta z-30 sotto BottomSheet (overlay piu` alto). */}
       <button
         onClick={() => setSheetOpen(true)}
-        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
+        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-white flex items-center justify-center text-black text-2xl font-bold hover:bg-[#A8A8A8] transition-colors"
         aria-label="Crea post"
       >
         +
@@ -345,7 +361,7 @@ export default function FeedPage() {
               <button
                 key={type}
                 onClick={() => setFormType(type)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                   formType === type
                     ? 'bg-[#E8A838] text-[#1a1a2e] border-[#E8A838]'
                     : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'

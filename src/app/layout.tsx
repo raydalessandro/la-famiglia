@@ -1,9 +1,18 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Sacramento } from 'next/font/google'
 import { ErudaDevtools } from '@/components/debug/ErudaDevtools'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
+// Sacramento — open-source cursive script, closest free analogue to
+// Billabong (Instagram's historic wordmark). Used only for the feed
+// "La Famiglia" logo header.
+const sacramento = Sacramento({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-sacramento',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'La Famiglia',
@@ -29,7 +38,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="it">
+    <html lang="it" className={sacramento.variable}>
       {/* Debug-only on-device console. Opt-in via ?debug=1 — invisible
        * agli utenti normali. Posizionato a livello <html> (non dentro
        * <head>) perché Next App Router gestisce automaticamente

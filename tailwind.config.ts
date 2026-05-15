@@ -53,6 +53,12 @@ const config: Config = {
         // (timestamps, role labels) where short = scannable.
         caption: ["13px", { lineHeight: "1.4" }],
       },
+      fontFamily: {
+        // Sacramento — Google Font cursivo, sostituto open-source di
+        // Billabong (logo storico di Instagram). Usata SOLO per il
+        // titolo "La Famiglia" nell'header del feed.
+        sacramento: ["var(--font-sacramento)", "cursive"],
+      },
     },
   },
   plugins: [],
