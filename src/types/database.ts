@@ -65,8 +65,16 @@ export type PostWithDetails = Post & {
   likes: PostLike[]
   comments_count: number
   liked_by_me: boolean
+  bookmarked_by_me: boolean
   reactions: PostReactionWithMember[]
   poll: PostPollWithResults | null
+}
+
+export type PostBookmark = {
+  id: string
+  post_id: string
+  member_id: string
+  created_at: string
 }
 
 export type PostPoll = {

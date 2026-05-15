@@ -36,6 +36,7 @@ export async function buildPostWithDetails(
     commentsResult,
     reactionsResult,
     pollResult,
+    bookmarkResult,
   ] = await Promise.all([
     db.from('members').select('*').eq('id', post.author_id).single(),
     db.from('post_images').select('*').eq('post_id', post.id).order('sort_order', { ascending: true }),
@@ -46,6 +47,17 @@ export async function buildPostWithDetails(
       .from('post_polls')
       .select('*, options:post_poll_options(*), votes:post_poll_votes(option_id, member_id)')
       .eq('post_id', post.id)
+      .maybeSingle(),
+    // Bookmark privato del viewing member su questo post. La tabella
+    // post_bookmarks ha RLS abilitata senza policy SELECT pubblica
+    // (vedi migration 012): nessuno vede i bookmark degli altri, e
+    // questa stessa lookup ritorna sempre solo le righe di `member.id`
+    // perché passa dalle API server-side con service_role.
+    db
+      .from('post_bookmarks')
+      .select('id')
+      .eq('post_id', post.id)
+      .eq('member_id', member.id)
       .maybeSingle(),
   ])
 
@@ -72,6 +84,7 @@ export async function buildPostWithDetails(
     likes,
     comments_count,
     liked_by_me: likes.some((l) => l.member_id === member.id),
+    bookmarked_by_me: !!bookmarkResult.data,
     reactions,
     poll,
   }

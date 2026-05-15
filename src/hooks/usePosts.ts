@@ -26,6 +26,7 @@ type UsePostsReturn = {
   loadMore: () => Promise<void>
   createPost: (input: CreatePostInput) => Promise<boolean>
   toggleLike: (postId: string) => Promise<void>
+  toggleBookmark: (postId: string) => Promise<void>
   toggleReaction: (
     postId: string,
     emoji: ReactionEmoji,
@@ -144,6 +145,27 @@ export function usePosts(authorId?: string): UsePostsReturn {
               : [...p.likes, { id: 'temp', post_id: postId, member_id: '', created_at: '' }],
           }
         })
+      )
+    }
+  }, [])
+
+  const toggleBookmark = useCallback(async (postId: string): Promise<void> => {
+    // Optimistic flip: il bookmark non ha conteggi visibili (è privato),
+    // quindi basta flippare il flag. Niente lista da aggiornare.
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId ? { ...p, bookmarked_by_me: !p.bookmarked_by_me } : p,
+      ),
+    )
+    try {
+      const res = await fetch(`/api/posts/${postId}/bookmark`, { method: 'POST' })
+      if (!res.ok) throw new Error('Bookmark failed')
+    } catch {
+      // Rollback: stesso flip inverso.
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId ? { ...p, bookmarked_by_me: !p.bookmarked_by_me } : p,
+        ),
       )
     }
   }, [])
@@ -273,6 +295,7 @@ export function usePosts(authorId?: string): UsePostsReturn {
     loadMore,
     createPost,
     toggleLike,
+    toggleBookmark,
     toggleReaction,
     addComment,
     deletePost,
