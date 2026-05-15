@@ -8,15 +8,19 @@ type BottomNavProps = {
   notificationCount?: number
 }
 
-// Italian labels chosen for clarity over fashion — "Bacheca" reads
-// better to grandparents than the English "Feed", and they stay visible
-// at all times (Apple HIG: every tab should always show its label).
+// Italian labels per chiarezza > moda — "Bacheca" si legge meglio dei
+// nonni del "Feed" inglese, e le label restano sempre visibili
+// (Apple HIG: ogni tab dovrebbe mostrare sempre la sua label).
+//
+// Icone: outline 24px stroke 1.5 inline. Le emoji native usate
+// precedentemente (📰📋📅💬👨‍👩‍👧‍👦) erano grandi e davano vibe template —
+// l'utente l'ha segnalato. Path inline per evitare dep icon-set.
 const tabs = [
-  { href: '/feed', label: 'Bacheca', emoji: '📰' },
-  { href: '/activities', label: 'Attività', emoji: '📋' },
-  { href: '/calendar', label: 'Agenda', emoji: '📅' },
-  { href: '/chat', label: 'Chat', emoji: '💬' },
-  { href: '/family', label: 'Famiglia', emoji: '👨‍👩‍👧‍👦' },
+  { href: '/feed', label: 'Bacheca', path: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10' },
+  { href: '/activities', label: 'Attività', path: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11' },
+  { href: '/calendar', label: 'Agenda', path: 'M3 9h18M8 3v4M16 3v4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z' },
+  { href: '/chat', label: 'Chat', path: 'M21 12a8 8 0 01-11.4 7.3L3 21l1.7-6.6A8 8 0 1121 12z' },
+  { href: '/family', label: 'Famiglia', path: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
 ]
 
 export function BottomNav({ notificationCount = 0 }: BottomNavProps) {
@@ -35,29 +39,42 @@ export function BottomNav({ notificationCount = 0 }: BottomNavProps) {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 min-h-touch py-2 transition-colors active:scale-95 ${
+            // No `active:scale-95` — feedback click via colore + peso label,
+            // niente animazioni geometriche (preferenza dichiarata).
+            className={`relative flex flex-1 flex-col items-center justify-center gap-1 min-h-touch py-2 transition-colors ${
               isActive ? 'text-accent' : 'text-white/55 hover:text-white/80'
             }`}
             aria-current={isActive ? 'page' : undefined}
           >
-            {/* Active indicator pill behind the icon — soft tinted gold so
-             * the active state is unmistakable, not just a colour shift. */}
+            {/* Active indicator pill — soft tinted gold dietro all'icona */}
             {isActive && (
               <span
                 className="absolute top-1.5 h-7 w-12 rounded-full bg-accent-soft -z-0"
                 aria-hidden="true"
               />
             )}
-            <span className="relative text-2xl leading-none">
-              {tab.emoji}
+            <span className="relative flex h-6 w-6 items-center justify-center">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={isActive ? 2 : 1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-6 w-6"
+                aria-hidden="true"
+              >
+                <path d={tab.path} />
+              </svg>
               {isChat && notificationCount > 0 && (
-                <Badge
-                  count={notificationCount}
-                  className="absolute -top-1.5 -right-2.5"
-                />
+                <Badge count={notificationCount} className="absolute -top-1.5 -right-2.5" />
               )}
             </span>
-            <span className="relative text-[12px] font-semibold leading-none">
+            <span
+              className={`relative text-[11px] leading-none ${
+                isActive ? 'font-semibold' : 'font-medium'
+              }`}
+            >
               {tab.label}
             </span>
           </Link>
