@@ -12,12 +12,23 @@ onboarding, niente concetti tecnici esposti.
 
 Aree principali:
 - **Bacheca** (`/feed`) — post (foto, ricette, storie). Like, reactions
-  (❤️ 😄 👏), commenti. Lightbox foto + pagina post singolo `/feed/[id]`.
+  (❤️ 😄 👏), commenti, **bookmark** (`/saved`), **share su WhatsApp**.
+  Lightbox foto + pagina post singolo `/feed/[id]`. **Layout post
+  riordinato** (refresh 2026-05-16): avatar+nome → caption → foto →
+  timestamp uppercase tracking → reactions chip inline → action row
+  (like, comment, share, bookmark right-aligned) → count row.
+  `<PostCard>` separato da hairline `border-b border-white/10` —
+  niente piu` card chrome esterno (no bg/bordo/rounded card).
 - **Attività** (`/activities`) — vista settimanale unificata di attività
   ricorrenti (es. "Piscina ogni sabato") + eventi one-off della settimana
-  corrente. Conferma presenze (Confermo / Salto / Modifico + nota) per
-  entrambi i tipi. Hook `useActivities` + `useWeekEvents`, componenti
-  `ActivityCard` ed `EventCard` con identica interazione.
+  corrente. Conferma presenze (Confermo / Salto / **composer chat-like
+  per nota di modifica**) per entrambi i tipi. Hook `useActivities` +
+  `useWeekEvents`, componenti `ActivityCard` ed `EventCard` con identica
+  interazione. **DayStrip** sticky in cima sincronizzata
+  bidirezionalmente con la lista delle day-sections sotto (refresh
+  2026-05-16): scroll verticale → IntersectionObserver detecta day-section
+  in vista → pill DayStrip si centra orizzontalmente; tap pill →
+  smooth-scroll alla section. Pill compatti (`h-[42px] min-w-[56px]`).
 - **Agenda** (`/calendar`) — vista mensile a calendario. Mostra dots
   colorati per ogni giorno e una sheet col dettaglio del giorno
   selezionato. Read-only sulla presenza (la conferma avviene dalla
@@ -31,11 +42,16 @@ Aree principali:
 
 ## Workflow del repo
 
-1. Sviluppa sempre sul branch `claude/fix-hydration-issues-Cp0Eu`.
-   Le PR vengono mergiate su `main` automaticamente al push.
+1. **Branch-per-task** da `main` (es. `claude/feed-fab-to-header`,
+   `claude/activities-iteration`). Le PR mergiate su `main` triggerano
+   il deploy automatico su Vercel.
 2. Commit descrittivi (focus sul "perché", non sul "cosa").
 3. Push frequente — ogni feature è una PR atomica.
 4. Tutto il copy in italiano. Niente jargon tecnico esposto agli utenti.
+5. Push diretto su `main` consentito SOLO per micro-fix UI cosmetici
+   (rimozione di un blocco JSX, update di un URL nel registry, etc.)
+   e SOLO con autorizzazione esplicita dell'utente. Tutto il resto
+   passa da PR.
 
 ## Strumenti di debug
 
@@ -172,6 +188,74 @@ mergiate 2026-05-15):
   "Evento / Attività" usata sia da `/activities` sia da `/calendar`.
   Default kind = quello della pagina corrente, swappabile in 1 tap.
 
+**Refresh UI globale + /feed + /activities** (2026-05-16, PR #54 #62 #64 #65):
+
+Pure UI iteration, zero DB, zero API touch. Allineamento di feed +
+activities + chrome globale a un design "minimal Instagram-like + navy
+warm". Migliorie + nuovi pattern infrastrutturali:
+
+- **PR #54 minimal feed**: rimosso il chrome card esterno dai post
+  (no bg, border, rounded); separazione fra post via hairline
+  `border-b border-white/10`. Header pagina diventa serif italic
+  light "La Famiglia".
+- **PR #62 hamburger drawer + bottom nav SVG + post reordering**:
+  - Header globale: hamburger menu drawer al posto delle 3 icone
+    separate (Settings, Admin, Notifiche). Drawer arricchito con
+    voce "Famiglia" + sezione "Le nostre app" inline (loghi 36px +
+    nome + freccina ↗ external).
+  - BottomNav: emoji native sostituite con SVG outline stroke 1.5
+    (home, list-checks, calendar, bubble, users). Tab "Famiglia"
+    rimossa (spostata nel drawer); 5° slot ora placeholder
+    "Presto" disabilitato per futura feature front-only.
+  - PostCard riordinato: avatar+nome → caption → foto → timestamp
+    piccolo uppercase → reactions chip inline → action row → count.
+- **PR #64 + nell'header + firma**:
+  - Convenzione globale "+ in header" via `<HeaderActionPortal>`:
+    le pagine wrap il proprio bottone action; il portal lo proietta
+    nello slot `<div id="header-page-action">` montato dal layout.
+    Sostituisce il FAB fixed bottom-right. Zero state, zero loop di
+    re-render.
+  - Wordmark header centro: `<Logo>` spirale dorato + "La Famiglia"
+    (mix bianco + oro Inter).
+  - Share post via WhatsApp: anchor `wa.me/?text=...` con preview-less
+    (testo + link). Niente Open Graph preview ricca (deciso di no per
+    privacy: richiederebbe rotta pubblica `/p/[id]` con scrape-bait).
+  - Firma "powered by EAR LAB" in fondo al drawer hamburger.
+  - Fix flicker reactions: debounce 600ms delle realtime subscription
+    + rimozione del `fetchPosts()` esplicito post-success (era
+    ridondante con l'optimistic update).
+- **PR #65 activities iteration**:
+  - Sync bidirezionale DayStrip ↔ day-sections (vedi sopra "Aree
+    principali"). Anti-loop via `isProgrammaticRef` timer 800ms.
+  - Bottone "Modifico" → composer chat-like inline in fondo a ogni
+    card ("Scrivi una nota di modifica…" + send arrow). Overlay
+    modal `modNotesOpen` rimosso del tutto.
+  - Espansione card: rimossa riga "Modificano (N)" con pill avatar
+    (ridondante col box blu sottostante). Avatar dei modificatori
+    rimossi anche dal summary chiuso (confondevano con i confermatori).
+  - FAB → `<HeaderActionPortal>` (stessa convenzione del feed).
+  - DayStrip pill compatti (`h-[42px] min-w-[56px]` rounded-xl,
+    numero 15px label 10px, dots assoluti in basso, shadow gold
+    attenuata).
+  - Pulizia: `bg-[#16213e]` hardcoded → token `bg-surface-raised`;
+    `active:scale-95` rimossi (no animazioni feedback click); emoji
+    decorative nel chrome (✓ ✏️ ⏭ 🗓️ 📅 🔁) → SVG outline stroke
+    1.5/2 (user-content emoji su `activity.icon` / `event.icon`
+    preservate quando l'utente le ha scelte).
+
+**Pagine NON ancora armonizzate** al refresh UI: `/family`,
+`/family/[id]`, `/chat`, `/chat/[id]`, `/calendar`, `/tasks`,
+`/saved`, `/settings`, `/admin`, `/albums`, `/albums/[id]`. Hanno
+ancora `bg-[#1a1a2e]` / `bg-surface` hardcoded + emoji decorative +
+FAB bottom-right. Da riarmonizzare pagina-per-pagina con lo stesso
+pattern usato su feed + activities.
+
+**5° slot bottom nav ("Presto")**: placeholder riservato per una
+feature front-only. Idea in discussione: "Memoria / Oggi un anno fa"
+(Facebook Memories pattern — pesca da `posts` quelli di N anni fa
+oggi, filtra client-side, riusa `<PostCard>`). Decisione finale
+posticipata.
+
 **Cosa NON è ancora stato fatto e dove sta**: i follow-up minori
 6.7–6.13 (no DB) restano parcheggiati nelle sezioni più sotto.
 
@@ -222,6 +306,22 @@ USA QUESTI, non reinventare:
   avatar o nome di membro è cliccabile.
 - **`<MiniAvatarStack>`** — stack avatar sovrapposti per assignees.
 - **`<BottomSheet>`** — modale dal basso.
+- **`<SideDrawer>`** — pannello slide-from-side (default 'right',
+  passa `side="left"` per il menu hamburger). Usa `createPortal` a
+  `document.body` per scappare al containing block dell'header che
+  ha `backdrop-blur` (Chrome/Safari issue, vedi commento nel file).
+  Scrim z-40, panel z-50 — simmetrico a `BottomSheet`. Esc + tap
+  fuori chiudono.
+- **`<HeaderActionPortal>`** — wrap il bottone action di pagina (es.
+  il "+" che apre un composer) e lo proietta nello slot
+  `<div id="header-page-action">` montato dal layout globale.
+  Convenzione "+ in header" sostituisce il pattern FAB
+  bottom-right per tutte le pagine con action principale.
+- **`<Logo>`** — spirale geometrica brand di la-famiglia. Usa
+  `currentColor` per ereditare il colore dal parent (es.
+  `text-[#E8A838]` per gold). Props `size` (default 32) e
+  `animated` (riservato — la classe `animate-spiral-breathe` non
+  e` ancora definita in tailwind config, no-op per ora).
 - **`<ParticipantPicker>`** — picker membri famiglia.
 - **`<Header>`** — header sticky standard (z-30, backdrop-blur).
 - **`<ImageLightbox>`** — modale full-screen per foto, swipe tra immagini,
