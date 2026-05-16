@@ -60,4 +60,12 @@ export const FAMILY_APPS: FamilyApp[] = [
     logoSrc: '/apps/moto-ride.png',
     accent: '#f97316',
   },
+  {
+    id: 'impara-giocando',
+    name: 'Impara Giocando',
+    description: 'Giochi per bimbi 3-6 anni',
+    url: 'https://impara-giocando-beta.vercel.app',
+    logoSrc: '/apps/impara-giocando.jpg',
+    accent: '#84CC16',
+  },
 ]
