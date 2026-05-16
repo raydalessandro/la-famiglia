@@ -2,31 +2,38 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { AppLauncher } from './AppLauncher'
 
 type HeaderProps = {
   title?: string
   showBack?: boolean
+  /** Slot a sinistra (es. menu hamburger). Sovrascritto da back button
+   *  se `showBack` e` true. Se null e !showBack → niente a sinistra. */
+  leftAction?: React.ReactNode
+  /** Slot a destra — di solito popolato dal layout con un placeholder
+   *  `<div id="header-page-action">` dentro cui le pagine fanno portal
+   *  via `<HeaderActionPortal>`. */
   rightAction?: React.ReactNode
 }
 
-export function Header({ title = 'La Famiglia', showBack, rightAction }: HeaderProps) {
+/**
+ * Header globale del layout `(main)`. Palette navy.
+ *
+ * Convenzione layout slot:
+ *  - left:   hamburger menu (passato dal layout) o back button su pagine secondarie
+ *  - center: titolo "La Famiglia"
+ *  - right:  slot di pagina (il + del compositore feed/attivita`/ecc.)
+ */
+export function Header({ title = 'La Famiglia', showBack, leftAction, rightAction }: HeaderProps) {
   const router = useRouter()
 
   return (
     <header
       className="sticky top-0 z-30 border-b border-white/10 bg-surface/95 backdrop-blur"
       style={{
-        // Header sits below the notch; viewport-fit=cover makes the inset
-        // non-zero on iOS PWAs. Padding-top spinge il contenuto sotto la
-        // dynamic island / status bar.
         paddingTop: 'env(safe-area-inset-top, 0px)',
       }}
     >
       <div className="relative flex h-14 items-center px-4">
-        {/* Left zone — back button su pagine secondarie, AppLauncher
-         * (4 quadrati → griglia delle app sorelle) su top-level. Mai
-         * entrambi: showBack=true vince. */}
         <div className="flex">
           {showBack ? (
             <button
@@ -50,23 +57,15 @@ export function Header({ title = 'La Famiglia', showBack, rightAction }: HeaderP
               </svg>
             </button>
           ) : (
-            <AppLauncher />
+            leftAction
           )}
         </div>
 
-        {/* Titolo — absolute al centro geometrico dell'header così
-         * rimane centrato anche quando la zona left contiene il link
-         * Music (~80px) invece dello spacer w-10 fisso. `pointer-events-none`
-         * lascia passare i tap al link sottostante. */}
         <h1 className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-base font-bold tracking-wide text-[#E8A838]">
           {title}
         </h1>
 
-        {/* Right zone — ml-auto la spinge a destra (il titolo absolute
-         * non occupa spazio nel flex). */}
-        <div className="ml-auto flex justify-end">
-          {rightAction}
-        </div>
+        <div className="ml-auto flex justify-end">{rightAction}</div>
       </div>
     </header>
   )
