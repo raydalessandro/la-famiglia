@@ -657,7 +657,7 @@ function DayStrip({
   return (
     <div
       ref={scrollRef}
-      className="flex gap-1.5 overflow-x-auto px-3 pb-3"
+      className="flex gap-1.5 overflow-x-auto overflow-y-visible px-3 pt-1.5 pb-3"
       style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
     >
       <style>{`
