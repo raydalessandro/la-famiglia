@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { PostWithDetails, ReactionEmoji, REACTION_EMOJIS } from '@/types/database'
 import { Avatar, MemberLink, ImageLightbox, MentionText } from '@/components/ui'
 import { Poll } from './Poll'
@@ -64,10 +64,28 @@ export function PostCard({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [reactPickerOpen, setReactPickerOpen] = useState(false)
+  // Href del bottone "Condividi su WhatsApp". Computato lato client in
+  // useEffect (window.location non disponibile in SSR). Fallback '#'
+  // durante il primo render server → l'anchor non fa nulla finche` non
+  // si idrata il client.
+  const [whatsappHref, setWhatsappHref] = useState<string>('#')
   const isOwn = post.author_id === currentMemberId
   const imageUrls = post.images?.map((i) => i.image_url) ?? []
   const likeCount = post.likes.length
   const commentCount = post.comments_count
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
+    const baseUrl = window.location.origin
+    const intro = post.text
+      ? `${post.author.name} su La Famiglia:\n\n"${truncate(post.text, 200)}"`
+      : `${post.author.name} ha condiviso ${
+          post.images?.length ? 'una foto' : post.poll ? 'un sondaggio' : 'qualcosa'
+        } su La Famiglia`
+    const full = `${intro}\n\n${baseUrl}/feed/${post.id}`
+    setWhatsappHref(`https://wa.me/?text=${encodeURIComponent(full)}`)
+  }, [post.id, post.text, post.author.name, post.images, post.poll])
 
   // Aggrega le reactions per emoji (count + se l'utente l'ha messa).
   const reactionGroups = post.reactions.reduce<
@@ -267,18 +285,22 @@ export function PostCard({
             </svg>
           </div>
         )}
-        {/* Share decorativa — paper-plane, lasciata per scelta utente
-            (no-op aria-disabled, "al massimo lo togliamo dopo"). */}
-        <button
-          type="button"
-          aria-label="Condividi (in arrivo)"
-          aria-disabled="true"
-          className="p-1 min-h-touch min-w-touch flex items-center justify-center text-white/40 cursor-default"
+        {/* Condividi su WhatsApp — anchor con wa.me deep-link.
+            Su mobile apre l'app WhatsApp (se installata) con il testo
+            pre-compilato e lascia scegliere il contatto; su desktop
+            apre WhatsApp Web. Hover su desktop = verde WhatsApp
+            `#25D366` come affordance visiva del brand target. */}
+        <a
+          href={whatsappHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-1 min-h-touch min-w-touch flex items-center justify-center text-white/70 hover:text-[#25D366] transition-colors"
+          aria-label="Condividi su WhatsApp"
         >
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
           </svg>
-        </button>
+        </a>
         {onBookmark && (
           <button
             type="button"

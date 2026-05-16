@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
 import { enqueueOperation } from '@/lib/offline-queue'
 import {
@@ -75,9 +75,30 @@ export function usePosts(authorId?: string): UsePostsReturn {
     fetchPosts()
   }, [fetchPosts])
 
-  useRealtimeSubscription('posts', () => fetchPosts(), undefined, true)
-  useRealtimeSubscription('post_reactions', () => fetchPosts(), undefined, true)
-  useRealtimeSubscription('post_poll_votes', () => fetchPosts(), undefined, true)
+  // Refetch debounced — i canali realtime su posts/post_reactions/
+  // post_poll_votes notificano TUTTI i client (incluso quello che ha
+  // fatto l'action). Senza debounce un tap rapido su piu` reazioni
+  // genera molti fetchPosts concorrenti che si sovrascrivono e
+  // producono "compare/scompare/riappare" visivo (flicker reactions
+  // segnalato). 600ms collassa il burst in un solo refetch.
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleRefetch = useCallback(() => {
+    if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current)
+    refetchTimerRef.current = setTimeout(() => {
+      refetchTimerRef.current = null
+      fetchPosts()
+    }, 600)
+  }, [fetchPosts])
+
+  useEffect(() => {
+    return () => {
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current)
+    }
+  }, [])
+
+  useRealtimeSubscription('posts', scheduleRefetch, undefined, true)
+  useRealtimeSubscription('post_reactions', scheduleRefetch, undefined, true)
+  useRealtimeSubscription('post_poll_votes', scheduleRefetch, undefined, true)
 
   const loadMore = useCallback(async () => {
     const nextPage = page + 1
@@ -219,14 +240,19 @@ export function usePosts(authorId?: string): UsePostsReturn {
               body: JSON.stringify({ emoji }),
             })
         if (!res.ok) throw new Error('Reaction failed')
-        // Refetch to pick up the real reaction id from server
-        fetchPosts()
+        // No refetch esplicito qui — l'optimistic update e` gia` accurato
+        // (member_id + emoji corretti, solo l'id e` temp ma non lo usiamo
+        // per altre op). Il realtime channel sincronizzera` con debounce
+        // entro 600ms se serve. Refetch esplicito qui causava il flicker
+        // perche` la response del POST arrivava prima del realtime e
+        // sovrascriveva lo state ottimistico con dati non ancora indicizzati
+        // server-side → reaction sparisce → poi realtime refetch → riappare.
       } catch {
-        // Rollback by refetching server truth
-        fetchPosts()
+        // Rollback by resync server-truth (debounced)
+        scheduleRefetch()
       }
     },
-    [posts, fetchPosts],
+    [posts, scheduleRefetch],
   )
 
   const addComment = useCallback(async (postId: string, text: string): Promise<boolean> => {

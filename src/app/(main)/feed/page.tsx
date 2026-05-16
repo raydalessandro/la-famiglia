@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { usePosts } from '@/hooks/usePosts'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, BottomSheet, Button, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
+import { Avatar, BottomSheet, Button, HeaderActionPortal, PostCardSkeleton, EmptyState, useToast } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { compressImage } from '@/lib/storage'
 import { ReactionEmoji, MemberPublic, CreatePollInput, BirthdayToday, ApiResponse } from '@/types/database'
@@ -313,14 +313,22 @@ export default function FeedPage() {
         )}
       </div>
 
-      {/* FAB */}
-      <button
-        onClick={() => setSheetOpen(true)}
-        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
-        aria-label="Crea post"
-      >
-        +
-      </button>
+      {/* "+" nell'header (sostituisce il FAB in sovrimpressione). Il
+          portal lo proietta dentro lo slot #header-page-action del
+          layout globale — convenzione "+ in header" valida per tutte
+          le pagine con action principale. */}
+      <HeaderActionPortal>
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[#E8A838] hover:bg-white/10 transition-colors"
+          aria-label="Crea post"
+        >
+          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </HeaderActionPortal>
 
       {/* Create Post BottomSheet */}
       <BottomSheet isOpen={sheetOpen} onClose={handleClose} title="Nuovo post">

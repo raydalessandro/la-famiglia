@@ -8,19 +8,19 @@ type BottomNavProps = {
   notificationCount?: number
 }
 
-// Italian labels per chiarezza > moda — "Bacheca" si legge meglio dei
-// nonni del "Feed" inglese, e le label restano sempre visibili
-// (Apple HIG: ogni tab dovrebbe mostrare sempre la sua label).
+// Icone SVG outline 24px stroke 1.5 inline.
 //
-// Icone: outline 24px stroke 1.5 inline. Le emoji native usate
-// precedentemente (📰📋📅💬👨‍👩‍👧‍👦) erano grandi e davano vibe template —
-// l'utente l'ha segnalato. Path inline per evitare dep icon-set.
+// "Famiglia" rimossa dalle tab bottom — spostata nel drawer hamburger
+// (vedi `(main)/layout.tsx`). Quello slot e` ora un placeholder "Presto"
+// per una nuova feature in arrivo.
 const tabs = [
-  { href: '/feed', label: 'Bacheca', path: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10' },
-  { href: '/activities', label: 'Attività', path: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11' },
-  { href: '/calendar', label: 'Agenda', path: 'M3 9h18M8 3v4M16 3v4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z' },
-  { href: '/chat', label: 'Chat', path: 'M21 12a8 8 0 01-11.4 7.3L3 21l1.7-6.6A8 8 0 1121 12z' },
-  { href: '/family', label: 'Famiglia', path: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
+  { href: '/feed', label: 'Bacheca', path: 'M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3v-6h6v6h3a1 1 0 001-1V10', placeholder: false },
+  { href: '/activities', label: 'Attività', path: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11', placeholder: false },
+  { href: '/calendar', label: 'Agenda', path: 'M3 9h18M8 3v4M16 3v4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z', placeholder: false },
+  { href: '/chat', label: 'Chat', path: 'M21 12a8 8 0 01-11.4 7.3L3 21l1.7-6.6A8 8 0 1121 12z', placeholder: false },
+  // Placeholder "coming soon" — slot riservato per una nuova pagina
+  // front-only (es. "Memoria / oggi un anno fa"). Disabled, no link.
+  { href: '#', label: 'Presto', path: 'M12 8v4l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z', placeholder: true },
 ]
 
 export function BottomNav({ notificationCount = 0 }: BottomNavProps) {
@@ -32,21 +32,11 @@ export function BottomNav({ notificationCount = 0 }: BottomNavProps) {
       aria-label="Navigazione principale"
     >
       {tabs.map((tab) => {
-        const isActive = pathname === tab.href || pathname.startsWith(tab.href + '/')
+        const isActive =
+          !tab.placeholder && (pathname === tab.href || pathname.startsWith(tab.href + '/'))
         const isChat = tab.href === '/chat'
-
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            // No `active:scale-95` — feedback click via colore + peso label,
-            // niente animazioni geometriche (preferenza dichiarata).
-            className={`relative flex flex-1 flex-col items-center justify-center gap-1 min-h-touch py-2 transition-colors ${
-              isActive ? 'text-accent' : 'text-white/55 hover:text-white/80'
-            }`}
-            aria-current={isActive ? 'page' : undefined}
-          >
-            {/* Active indicator pill — soft tinted gold dietro all'icona */}
+        const tabContent = (
+          <>
             {isActive && (
               <span
                 className="absolute top-1.5 h-7 w-12 rounded-full bg-accent-soft -z-0"
@@ -77,6 +67,32 @@ export function BottomNav({ notificationCount = 0 }: BottomNavProps) {
             >
               {tab.label}
             </span>
+          </>
+        )
+
+        if (tab.placeholder) {
+          return (
+            <div
+              key={tab.label}
+              className="relative flex flex-1 flex-col items-center justify-center gap-1 min-h-touch py-2 text-white/30 cursor-default select-none"
+              aria-disabled="true"
+              title="Funzione in arrivo"
+            >
+              {tabContent}
+            </div>
+          )
+        }
+
+        return (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            className={`relative flex flex-1 flex-col items-center justify-center gap-1 min-h-touch py-2 transition-colors ${
+              isActive ? 'text-accent' : 'text-white/55 hover:text-white/80'
+            }`}
+            aria-current={isActive ? 'page' : undefined}
+          >
+            {tabContent}
           </Link>
         )
       })}

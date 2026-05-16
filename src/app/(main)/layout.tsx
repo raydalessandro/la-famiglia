@@ -1,23 +1,24 @@
 'use client'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useNotifications } from '@/hooks/useNotifications'
-import { BottomNav, Header, Badge, SideDrawer, ToastProvider } from '@/components/ui'
+import { BottomNav, Header, Badge, Logo, SideDrawer, ToastProvider } from '@/components/ui'
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { processQueue } from '@/lib/offline-queue'
+import { FAMILY_APPS } from '@/lib/family-apps'
 
 /**
- * Hamburger button + SideDrawer (palette navy). Sostituisce le 3 icone
- * separate (settings + admin + notifiche) che cluttavano l'header.
+ * Bottone hamburger nell'header (zona SINISTRA, era zona destra).
+ * Apre il drawer arricchito che ora contiene anche:
+ *  - "Famiglia" (link a /family, spostata dal bottom-tab)
+ *  - Sezione "Le nostre app" con loghi+nome inline cliccabili
+ *    (sostituisce l'AppLauncher button separato)
  *
- * Un dot gold `#E8A838` sull'hamburger funge da "notifiche non lette"
- * binario: il count vero vive accanto a "Notifiche" dentro il drawer.
- *
- * Il SideDrawer usa createPortal (vedi commento in SideDrawer.tsx) per
- * scappare al containing block dell'header che ha backdrop-blur.
+ * Dot gold sull'hamburger = notifiche non lette (indicator binario).
  */
-function HeaderActions() {
+function HamburgerMenu() {
   const { isAdmin } = useAuth()
   const { unreadCount } = useNotifications()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -45,11 +46,14 @@ function HeaderActions() {
         )}
       </button>
 
-      <SideDrawer isOpen={menuOpen} onClose={close} title="Menu">
+      <SideDrawer isOpen={menuOpen} onClose={close} side="left" title="Menu">
         <nav className="flex flex-col gap-1 p-3">
           <MenuItem href="/feed" onClick={close} label="Notifiche" badge={unreadCount}>
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </MenuItem>
+          <MenuItem href="/family" onClick={close} label="Famiglia">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
           </MenuItem>
           <MenuItem href="/settings" onClick={close} label="Impostazioni">
             <circle cx="12" cy="12" r="3" />
@@ -61,13 +65,97 @@ function HeaderActions() {
             </MenuItem>
           )}
         </nav>
+
+        {/* Separator + sezione app sorelle. Mostriamo loghi+nome inline
+            (preferenza utente: deve "notarsi che porta a altri mondi"). */}
+        <div className="mt-2 border-t border-white/10 pt-3">
+          <p className="px-5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">
+            Le nostre app
+          </p>
+          <div className="flex flex-col gap-1 px-3 pb-4">
+            {FAMILY_APPS.map((app) => {
+              const isLive = app.url !== null
+              const content = (
+                <>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/5">
+                    <Image
+                      src={app.logoSrc}
+                      alt=""
+                      width={36}
+                      height={36}
+                      className="h-full w-full object-contain"
+                      unoptimized={app.logoSrc.endsWith('.svg')}
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] font-medium text-white truncate">{app.name}</span>
+                    <span className="block text-[12px] text-white/50 truncate">
+                      {isLive ? app.description : 'In arrivo'}
+                    </span>
+                  </span>
+                  {isLive && (
+                    <svg
+                      className="h-4 w-4 shrink-0 text-white/40"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M7 17L17 7M7 7h10v10" />
+                    </svg>
+                  )}
+                </>
+              )
+
+              if (!isLive) {
+                return (
+                  <div
+                    key={app.id}
+                    className="flex min-h-touch items-center gap-3 rounded-xl px-2 py-2 opacity-50"
+                    aria-disabled="true"
+                  >
+                    {content}
+                  </div>
+                )
+              }
+
+              return (
+                <a
+                  key={app.id}
+                  href={app.url!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={close}
+                  className="flex min-h-touch items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-white/5"
+                  aria-label={`Apri ${app.name} in una nuova tab`}
+                >
+                  {content}
+                </a>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Firma del lab in fondo al drawer. Discreta (white/40),
+            spirale piccolina + "powered by EAR LAB" uppercase
+            tracking-wider. */}
+        <div className="mt-auto flex items-center justify-center gap-2 border-t border-white/5 px-4 py-4 text-white/40">
+          <Logo size={16} className="text-white/40" />
+          <span className="text-[10px] leading-none">
+            <span>powered by </span>
+            <span className="font-semibold tracking-wider text-white/60">EAR LAB</span>
+          </span>
+        </div>
       </SideDrawer>
     </>
   )
 }
 
 /**
- * Singola voce del drawer. Icona 20px stroke 1.5 + label 15px,
+ * Voce del drawer. Icona 20px stroke 1.5 + label 15px,
  * `min-h-touch` 44px garantito. Accent gold per voci "potere" (Admin).
  */
 function MenuItem({
@@ -116,8 +204,6 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
 
-  // Routes that own their own chrome (header + footer) and want the full
-  // viewport — the layout's chrome must step out of the way for them.
   const isFullscreenRoute = /^\/chat\/[^/]+$/.test(pathname ?? '')
 
   useEffect(() => {
@@ -151,10 +237,15 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    // pb reserves room for BottomNav (min-h-touch=44 + py-2*2=16 + label) plus
-    // the iPhone home-bar safe area, so content never hides behind the bar.
     <div className="pb-[calc(5rem+env(safe-area-inset-bottom))]">
-      <Header rightAction={<HeaderActions />} />
+      {/* Header globale: hamburger a sinistra; il `+` di pagina vive
+          dentro lo slot `#header-page-action` a destra, popolato dalle
+          pagine via `<HeaderActionPortal>` (vedi src/components/ui/
+          HeaderActionPortal.tsx). */}
+      <Header
+        leftAction={<HamburgerMenu />}
+        rightAction={<div id="header-page-action" className="flex items-center" />}
+      />
       <main className="px-4 py-2">{children}</main>
       <BottomNav />
     </div>
