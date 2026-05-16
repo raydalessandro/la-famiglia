@@ -1,7 +1,7 @@
 'use client'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { useNotifications } from '@/hooks/useNotifications'
-import { BottomNav, Header, Badge, SideDrawer, ToastProvider } from '@/components/ui'
+import { BottomNav, Header, Badge, Logo, SideDrawer, ToastProvider } from '@/components/ui'
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -137,6 +137,17 @@ function HamburgerMenu() {
               )
             })}
           </div>
+        </div>
+
+        {/* Firma del lab in fondo al drawer. Discreta (white/40),
+            spirale piccolina + "powered by EAR LAB" uppercase
+            tracking-wider. */}
+        <div className="mt-auto flex items-center justify-center gap-2 border-t border-white/5 px-4 py-4 text-white/40">
+          <Logo size={16} className="text-white/40" />
+          <span className="text-[10px] leading-none">
+            <span>powered by </span>
+            <span className="font-semibold tracking-wider text-white/60">EAR LAB</span>
+          </span>
         </div>
       </SideDrawer>
     </>
