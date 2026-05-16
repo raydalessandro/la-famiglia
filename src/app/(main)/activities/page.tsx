@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useActivities } from '@/hooks/useActivities'
 import { useWeekEvents } from '@/hooks/useWeekEvents'
 import { useAuth } from '@/hooks/useAuth'
 import { useMembers } from '@/hooks/useMembers'
-import { Avatar, MiniAvatarStack, MemberLink } from '@/components/ui'
+import { Avatar, MiniAvatarStack, MemberLink, HeaderActionPortal } from '@/components/ui'
 import { CreateItemSheet } from '@/components/CreateItemSheet'
 import { ActivityWithDetails, CalendarEventWithDetails, AttendanceStatus, MemberPublic } from '@/types/database'
 
@@ -31,17 +31,26 @@ function ActivityCard({
   activity,
   currentMemberId,
   onSetMyStatus,
+  onSubmitModified,
   onClearMyStatus,
 }: {
   activity: ActivityWithDetails
   currentMemberId: string | undefined
-  onSetMyStatus: (id: string, status: AttendanceStatus) => void
+  onSetMyStatus: (id: string, status: 'confirmed' | 'skipped') => void
+  onSubmitModified: (id: string, note: string) => void
   onClearMyStatus: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
 
   const myAttendance = activity.attendances.find((a) => a.member_id === currentMemberId)
   const myStatus = myAttendance?.status ?? null
+  // Bozza della nota di modifica. Inizializzata col valore corrente del
+  // server (se l'utente ha gia` stato 'modified'). NIENTE useEffect-sync:
+  // se l'utente sta scrivendo e arrivano updates dal server, la sua bozza
+  // resta intatta. Reset al server value succede solo a remount del card.
+  const [noteDraft, setNoteDraft] = useState(
+    myAttendance?.status === 'modified' ? myAttendance.modified_notes ?? '' : '',
+  )
 
   // Index attendances by member_id
   const statusOf = new Map(activity.attendances.map((a) => [a.member_id, a.status]))
@@ -71,7 +80,7 @@ function ActivityCard({
 
   return (
     <div
-      className="bg-[#16213e] rounded-2xl overflow-hidden border border-white/5"
+      className="bg-surface-raised rounded-2xl overflow-hidden border border-white/5"
       style={{ borderLeft: `3px solid ${activity.color || '#E8A838'}` }}
     >
       <button
@@ -83,7 +92,13 @@ function ActivityCard({
             className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0"
             style={{ backgroundColor: `${activity.color || '#E8A838'}22` }}
           >
-            {activity.icon || '🗓️'}
+            {activity.icon ? (
+              activity.icon
+            ) : (
+              <svg className="w-5 h-5" style={{ color: activity.color || '#E8A838' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 9h18M8 3v4M16 3v4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+              </svg>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
@@ -122,19 +137,25 @@ function ActivityCard({
               <div className="mt-2 flex items-center gap-3 flex-wrap">
                 {confirmed.length > 0 && (
                   <div className="flex items-center gap-1.5" title={`${confirmed.length} confermati`}>
-                    <span className="text-emerald-400 text-xs">✓</span>
+                    <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 12l5 5 9-9" />
+                    </svg>
                     <MiniAvatarStack members={confirmed} max={3} />
                   </div>
                 )}
                 {modified.length > 0 && (
                   <div className="flex items-center gap-1.5" title={`${modified.length} modificano`}>
-                    <span className="text-blue-400 text-xs">✏️</span>
+                    <svg className="w-3.5 h-3.5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                    </svg>
                     <MiniAvatarStack members={modified} max={3} />
                   </div>
                 )}
                 {skipped.length > 0 && (
                   <div className="flex items-center gap-1.5 opacity-60" title={`${skipped.length} saltano`}>
-                    <span className="text-white/40 text-xs">⏭</span>
+                    <svg className="w-3.5 h-3.5 text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 4l10 8-10 8V4zM19 5v14" />
+                    </svg>
                     <MiniAvatarStack members={skipped} max={3} />
                   </div>
                 )}
@@ -153,52 +174,73 @@ function ActivityCard({
         </div>
       </button>
 
-      {/* Status buttons — visibili a tutti i membri loggati, anche se non
-       * pre-selezionati come participant_ids dell'attività. Tutti in
-       * famiglia possono dichiarare la propria presenza. */}
+      {/* Status row — 2 bottoni (Confermo/Salto) + input chat-like per
+       * scrivere una nota di modifica (sostituisce il vecchio bottone
+       * "Modifico" che apriva un modal). Submit = status='modified'
+       * con la nota. Sempre visibili, anche su card chiusa. */}
       {canMarkAttendance && (
-        <div className="px-4 pb-3 flex gap-2">
-          <button
-            onClick={() => onSetMyStatus(activity.id, 'confirmed')}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-              myStatus === 'confirmed'
-                ? 'bg-emerald-500 text-white'
-                : 'bg-white/5 text-white/50 hover:bg-emerald-500/20 hover:text-emerald-300'
-            }`}
-          >
-            Confermo ✅
-          </button>
-          <button
-            onClick={() => onSetMyStatus(activity.id, 'skipped')}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-              myStatus === 'skipped'
-                ? 'bg-white/20 text-white'
-                : 'bg-white/5 text-white/50 hover:bg-white/10'
-            }`}
-          >
-            Salto ⏭
-          </button>
-          <button
-            onClick={() => onSetMyStatus(activity.id, 'modified')}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-              myStatus === 'modified'
-                ? 'bg-blue-500 text-white'
-                : 'bg-white/5 text-white/50 hover:bg-blue-500/20 hover:text-blue-300'
-            }`}
-          >
-            Modifico ✏️
-          </button>
+        <div className="px-4 pb-3 flex flex-col gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => onSetMyStatus(activity.id, 'confirmed')}
+              className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${
+                myStatus === 'confirmed'
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-white/5 text-white/50 hover:bg-emerald-500/20 hover:text-emerald-300'
+              }`}
+            >
+              Confermo
+            </button>
+            <button
+              onClick={() => onSetMyStatus(activity.id, 'skipped')}
+              className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${
+                myStatus === 'skipped'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-white/5 text-white/50 hover:bg-white/10'
+              }`}
+            >
+              Salto
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && noteDraft.trim()) {
+                  onSubmitModified(activity.id, noteDraft.trim())
+                }
+              }}
+              placeholder="Scrivi una nota di modifica…"
+              className={`flex-1 rounded-full border bg-white/5 px-4 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-blue-400/60 ${
+                myStatus === 'modified' ? 'border-blue-500/40' : 'border-white/10'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (noteDraft.trim()) onSubmitModified(activity.id, noteDraft.trim())
+              }}
+              disabled={!noteDraft.trim()}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e] transition-colors disabled:bg-white/10 disabled:text-white/30"
+              aria-label="Invia nota di modifica"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Expanded: per-status breakdown + roles + my-clear */}
+      {/* Expanded: per-status breakdown + roles + my-clear.
+          Riga "Modificano" rimossa: ridondante col box blu sotto che
+          gia` lista "{Nome}: nota" per ogni modifica. */}
       {expanded && (
         <div className="px-4 pb-4 border-t border-white/5 pt-3 flex flex-col gap-3">
           {confirmed.length > 0 && (
             <AttendeeRow label="Confermano" tone="emerald" members={confirmed} />
-          )}
-          {modified.length > 0 && (
-            <AttendeeRow label="Modificano" tone="blue" members={modified} />
           )}
           {skipped.length > 0 && (
             <AttendeeRow label="Salteranno" tone="muted" members={skipped} />
@@ -291,11 +333,13 @@ function EventCard({
   event,
   currentMemberId,
   onSetMyStatus,
+  onSubmitModified,
   onClearMyStatus,
 }: {
   event: CalendarEventWithDetails
   currentMemberId: string | undefined
-  onSetMyStatus: (id: string, status: AttendanceStatus) => void
+  onSetMyStatus: (id: string, status: 'confirmed' | 'skipped') => void
+  onSubmitModified: (id: string, note: string) => void
   onClearMyStatus: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -303,6 +347,9 @@ function EventCard({
   const attendances = event.attendances ?? []
   const myAttendance = attendances.find((a) => a.member_id === currentMemberId)
   const myStatus = (myAttendance?.status ?? null) as AttendanceStatus | null
+  const [noteDraft, setNoteDraft] = useState(
+    myAttendance?.status === 'modified' ? myAttendance.modified_notes ?? '' : '',
+  )
 
   const confirmed: MemberPublic[] = []
   const skipped: MemberPublic[] = []
@@ -326,7 +373,7 @@ function EventCard({
 
   return (
     <div
-      className="bg-[#16213e] rounded-2xl overflow-hidden border border-white/5"
+      className="bg-surface-raised rounded-2xl overflow-hidden border border-white/5"
       style={{ borderLeft: `3px solid ${event.color || '#E85D75'}` }}
     >
       <button
@@ -338,7 +385,13 @@ function EventCard({
             className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0"
             style={{ backgroundColor: `${event.color || '#E85D75'}22` }}
           >
-            {event.icon || '📅'}
+            {event.icon ? (
+              event.icon
+            ) : (
+              <svg className="w-5 h-5" style={{ color: event.color || '#E85D75' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 9h18M8 3v4M16 3v4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+              </svg>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
@@ -376,19 +429,25 @@ function EventCard({
               <div className="mt-2 flex items-center gap-3 flex-wrap">
                 {confirmed.length > 0 && (
                   <div className="flex items-center gap-1.5" title={`${confirmed.length} confermati`}>
-                    <span className="text-emerald-400 text-xs">✓</span>
+                    <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 12l5 5 9-9" />
+                    </svg>
                     <MiniAvatarStack members={confirmed} max={3} />
                   </div>
                 )}
                 {modified.length > 0 && (
                   <div className="flex items-center gap-1.5" title={`${modified.length} modificano`}>
-                    <span className="text-blue-400 text-xs">✏️</span>
+                    <svg className="w-3.5 h-3.5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                    </svg>
                     <MiniAvatarStack members={modified} max={3} />
                   </div>
                 )}
                 {skipped.length > 0 && (
                   <div className="flex items-center gap-1.5 opacity-60" title={`${skipped.length} saltano`}>
-                    <span className="text-white/40 text-xs">⏭</span>
+                    <svg className="w-3.5 h-3.5 text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 4l10 8-10 8V4zM19 5v14" />
+                    </svg>
                     <MiniAvatarStack members={skipped} max={3} />
                   </div>
                 )}
@@ -404,39 +463,60 @@ function EventCard({
         </div>
       </button>
 
-      {/* Status buttons identici a ActivityCard. */}
+      {/* Status row — speculare a ActivityCard. */}
       {canMarkAttendance && (
-        <div className="px-4 pb-3 flex gap-2">
-          <button
-            onClick={() => onSetMyStatus(event.id, 'confirmed')}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-              myStatus === 'confirmed'
-                ? 'bg-emerald-500 text-white'
-                : 'bg-white/5 text-white/50 hover:bg-emerald-500/20 hover:text-emerald-300'
-            }`}
-          >
-            Confermo ✅
-          </button>
-          <button
-            onClick={() => onSetMyStatus(event.id, 'skipped')}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-              myStatus === 'skipped'
-                ? 'bg-white/20 text-white'
-                : 'bg-white/5 text-white/50 hover:bg-white/10'
-            }`}
-          >
-            Salto ⏭
-          </button>
-          <button
-            onClick={() => onSetMyStatus(event.id, 'modified')}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all ${
-              myStatus === 'modified'
-                ? 'bg-blue-500 text-white'
-                : 'bg-white/5 text-white/50 hover:bg-blue-500/20 hover:text-blue-300'
-            }`}
-          >
-            Modifico ✏️
-          </button>
+        <div className="px-4 pb-3 flex flex-col gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => onSetMyStatus(event.id, 'confirmed')}
+              className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${
+                myStatus === 'confirmed'
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-white/5 text-white/50 hover:bg-emerald-500/20 hover:text-emerald-300'
+              }`}
+            >
+              Confermo
+            </button>
+            <button
+              onClick={() => onSetMyStatus(event.id, 'skipped')}
+              className={`flex-1 py-2 rounded-xl text-xs font-medium transition-colors ${
+                myStatus === 'skipped'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-white/5 text-white/50 hover:bg-white/10'
+              }`}
+            >
+              Salto
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && noteDraft.trim()) {
+                  onSubmitModified(event.id, noteDraft.trim())
+                }
+              }}
+              placeholder="Scrivi una nota di modifica…"
+              className={`flex-1 rounded-full border bg-white/5 px-4 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-blue-400/60 ${
+                myStatus === 'modified' ? 'border-blue-500/40' : 'border-white/10'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (noteDraft.trim()) onSubmitModified(event.id, noteDraft.trim())
+              }}
+              disabled={!noteDraft.trim()}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E8A838] text-[#1a1a2e] transition-colors disabled:bg-white/10 disabled:text-white/30"
+              aria-label="Invia nota di modifica"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
@@ -444,9 +524,6 @@ function EventCard({
         <div className="px-4 pb-4 border-t border-white/5 pt-3 flex flex-col gap-3">
           {confirmed.length > 0 && (
             <AttendeeRow label="Confermano" tone="emerald" members={confirmed} />
-          )}
-          {modified.length > 0 && (
-            <AttendeeRow label="Modificano" tone="blue" members={modified} />
           )}
           {skipped.length > 0 && (
             <AttendeeRow label="Salteranno" tone="muted" members={skipped} />
@@ -553,13 +630,30 @@ type DayStripDay = {
   isEmpty: boolean
 }
 
-function DayStrip({ days }: { days: DayStripDay[] }) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const todayEl = scrollRef.current?.querySelector<HTMLElement>('[data-today="true"]')
-    todayEl?.scrollIntoView({ inline: 'center', block: 'nearest' })
-  }, [])
-
+/**
+ * DayStrip — striscia 7 giorni sticky. Sincronizzata bidirezionalmente
+ * con la lista delle day-sections del body:
+ *  - Scroll verticale della lista → IntersectionObserver detecta il
+ *    giorno in vista → parent setta `activeDay` → effetto sincronizza
+ *    lo scroll orizzontale dello strip per centrare quel pill.
+ *  - Tap su un pill → parent gestisce con `onDayClick(day)` che fa
+ *    scroll smooth della section corrispondente.
+ *
+ * `activeDay` (giorno centrato in vista) ≠ `isToday` (data reale):
+ *  - oggi resta dorato pieno + dot shadow attenuato (riferimento fisso)
+ *  - active ha ring bianco discreto attorno (cambia mentre scorri)
+ */
+function DayStrip({
+  days,
+  activeDay,
+  onDayClick,
+  scrollRef,
+}: {
+  days: DayStripDay[]
+  activeDay: number
+  onDayClick: (day: number) => void
+  scrollRef: React.RefObject<HTMLDivElement | null>
+}) {
   return (
     <div
       ref={scrollRef}
@@ -574,6 +668,7 @@ function DayStrip({ days }: { days: DayStripDay[] }) {
         }
       `}</style>
       {days.map((d) => {
+        const isActive = d.day === activeDay
         const bgClass = d.isToday
           ? 'bg-[#E8A838] border-[#E8A838]'
           : d.isEmpty
@@ -590,13 +685,20 @@ function DayStrip({ days }: { days: DayStripDay[] }) {
           ? 'text-white/30'
           : 'text-white'
 
+        // Anello bianco discreto sul giorno "centrato in vista". Se e`
+        // gia` oggi (dorato pieno) skippo l'anello — sarebbe troppo.
+        const ringClass = isActive && !d.isToday ? 'ring-2 ring-white/40' : ''
+
         return (
-          <a
+          <button
             key={d.day}
-            href={`#day-${d.day}`}
+            type="button"
+            data-day-strip={d.day}
             data-today={d.isToday}
-            className={`shrink-0 flex flex-col items-center justify-center min-w-[58px] h-[72px] rounded-2xl border relative active:scale-95 transition-transform ${bgClass}`}
-            style={d.isToday ? { boxShadow: '0 8px 20px -8px rgba(232, 168, 56, 0.5)' } : undefined}
+            onClick={() => onDayClick(d.day)}
+            className={`shrink-0 flex flex-col items-center justify-center min-w-[58px] h-[72px] rounded-2xl border relative transition-colors ${bgClass} ${ringClass}`}
+            // Shadow gold attenuata (era 0 8px 20px -8px @0.5, ora piu` discreta)
+            style={d.isToday ? { boxShadow: '0 4px 12px -6px rgba(232, 168, 56, 0.35)' } : undefined}
           >
             <span className={`text-[11px] font-medium uppercase tracking-wide ${shortColor}`}>
               {d.short}
@@ -627,7 +729,7 @@ function DayStrip({ days }: { days: DayStripDay[] }) {
                 }}
               />
             )}
-          </a>
+          </button>
         )
       })}
     </div>
@@ -654,7 +756,7 @@ function FilterTab({
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
+      className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
         active ? activeClass : 'bg-white/5 text-white/50 hover:bg-white/10'
       }`}
     >
@@ -709,8 +811,20 @@ export default function ActivitiesPage() {
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [filter, setFilter] = useState<WeekFilter>('all')
-  const [modNotes, setModNotes] = useState<Record<string, string>>({})
-  const [modNotesOpen, setModNotesOpen] = useState<{ kind: 'activity' | 'event'; id: string } | null>(null)
+
+  // Sync bidirezionale DayStrip ↔ day-sections.
+  // `activeDay` e` il giorno "centrato in vista"; muta sia per scroll
+  // verticale della lista (via IntersectionObserver) sia per tap pill
+  // (via onDayClick handler). isProgrammaticRef previene il loop:
+  // quando IO scrollo programmaticamente (click pill → scroll section),
+  // ignoro per 800ms gli eventi observer che potrebbero rispedire indietro.
+  const todayCalc = new Date()
+  const todayDowInit = todayCalc.getDay() === 0 ? 7 : todayCalc.getDay()
+  const [activeDay, setActiveDay] = useState<number>(todayDowInit)
+  const stripScrollRef = useRef<HTMLDivElement>(null)
+  const dayHeadersRef = useRef<Map<number, HTMLElement>>(new Map())
+  const isProgrammaticRef = useRef(false)
+  const programmaticTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Group activities + events by day_of_week con filtro applicato. Per gli
   // eventi il giorno si deriva dalla event_date in local time. Dentro lo
@@ -741,8 +855,8 @@ export default function ActivitiesPage() {
   // member?.id, nessuna fetch extra. Costruiamo la Date del lunedi`
   // della settimana corrente in local time (no .toISOString() → evita
   // off-by-one al cambio fuso orario).
-  const today = new Date()
-  const todayDow = today.getDay() === 0 ? 7 : today.getDay() // 1=Lun..7=Dom
+  const today = todayCalc
+  const todayDow = todayDowInit
   const monday = new Date(today)
   monday.setDate(today.getDate() - (todayDow - 1))
   const dayShorts = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
@@ -771,33 +885,85 @@ export default function ActivitiesPage() {
     }
   })
 
-  const handleSetMyActivityStatus = async (id: string, status: AttendanceStatus) => {
-    if (status === 'modified') {
-      setModNotesOpen({ kind: 'activity', id })
-      return
-    }
+  // Handler semplificati — niente piu` branch 'modified' che apriva un
+  // modal. La nota di modifica vive dentro al composer chat-like in
+  // fondo a ogni card, gestito da handleSubmit*Modified sotto.
+  const handleSetMyActivityStatus = async (id: string, status: 'confirmed' | 'skipped') => {
     await setMyAttendance(id, status)
   }
 
-  const handleSetMyEventStatus = async (id: string, status: AttendanceStatus) => {
-    if (status === 'modified') {
-      setModNotesOpen({ kind: 'event', id })
-      return
-    }
+  const handleSetMyEventStatus = async (id: string, status: 'confirmed' | 'skipped') => {
     await setMyEventAttendance(id, status)
   }
 
-  const handleModifiedConfirm = async () => {
-    if (!modNotesOpen) return
-    const { kind, id } = modNotesOpen
-    const note = modNotes[`${kind}-${id}`] ?? ''
-    if (kind === 'activity') {
-      await setMyAttendance(id, 'modified', note)
-    } else {
-      await setMyEventAttendance(id, 'modified', note)
-    }
-    setModNotesOpen(null)
+  const handleSubmitActivityModified = async (id: string, note: string) => {
+    await setMyAttendance(id, 'modified', note)
   }
+
+  const handleSubmitEventModified = async (id: string, note: string) => {
+    await setMyEventAttendance(id, 'modified', note)
+  }
+
+  // Click pill DayStrip → scroll alla day-section corrispondente.
+  // Marca isProgrammaticRef per 800ms per evitare che l'observer
+  // (che vede passare le sections durante lo scroll smooth) re-emetta
+  // setActiveDay creando un loop o uno "sbattere" della pill attiva.
+  const handleDayClick = useCallback((day: number) => {
+    isProgrammaticRef.current = true
+    if (programmaticTimerRef.current) clearTimeout(programmaticTimerRef.current)
+    programmaticTimerRef.current = setTimeout(() => {
+      isProgrammaticRef.current = false
+    }, 800)
+    setActiveDay(day)
+    const target = dayHeadersRef.current.get(day)
+    target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [])
+
+  // IntersectionObserver: detecta quale day-section attraversa la
+  // "banda attiva" (banda 30%-65% dello schermo, sotto la sticky chrome).
+  // Quando cambia, aggiorna activeDay → l'altro effect sotto sincronizza
+  // lo scroll orizzontale del DayStrip.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isProgrammaticRef.current) return
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)
+        if (visible.length > 0) {
+          const dayAttr = (visible[0].target as HTMLElement).dataset.day
+          if (dayAttr) {
+            const d = Number(dayAttr)
+            setActiveDay((prev) => (prev === d ? prev : d))
+          }
+        }
+      },
+      { rootMargin: '-30% 0px -65% 0px', threshold: 0 },
+    )
+    const els = Array.from(dayHeadersRef.current.values())
+    els.forEach((el) => observer.observe(el))
+    return () => observer.disconnect()
+  }, [grouped])
+
+  // Auto-scroll del DayStrip quando activeDay cambia (sia da
+  // observer che da click pill). `inline: 'center'` centra il pill
+  // nello scroll orizzontale; smooth perche` e` un cambio guidato
+  // dall'attenzione dell'utente.
+  useEffect(() => {
+    const stripEl = stripScrollRef.current
+    if (!stripEl) return
+    const target = stripEl.querySelector<HTMLElement>(`[data-day-strip="${activeDay}"]`)
+    if (!target) return
+    target.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
+  }, [activeDay])
+
+  // Cleanup timer su unmount
+  useEffect(() => {
+    return () => {
+      if (programmaticTimerRef.current) clearTimeout(programmaticTimerRef.current)
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-[#1a1a2e] pb-24">
@@ -812,22 +978,29 @@ export default function ActivitiesPage() {
             {new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}
           </span>
         </div>
-        <DayStrip days={dayStripData} />
+        <DayStrip
+          days={dayStripData}
+          activeDay={activeDay}
+          onDayClick={handleDayClick}
+          scrollRef={stripScrollRef}
+        />
         <div className="px-4 pb-3 flex gap-2">
           <FilterTab label="Tutti" active={filter === 'all'} onClick={() => setFilter('all')} tone="neutral" />
-          <FilterTab label="📅 Eventi" active={filter === 'events'} onClick={() => setFilter('events')} tone="event" />
-          <FilterTab label="🔁 Attività" active={filter === 'activities'} onClick={() => setFilter('activities')} tone="activity" />
+          <FilterTab label="Eventi" active={filter === 'events'} onClick={() => setFilter('events')} tone="event" />
+          <FilterTab label="Attività" active={filter === 'activities'} onClick={() => setFilter('activities')} tone="activity" />
         </div>
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-6">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-32 bg-[#16213e] rounded-2xl animate-pulse border border-white/5" />
+            <div key={i} className="h-32 bg-surface-raised rounded-2xl animate-pulse border border-white/5" />
           ))
         ) : totalItems === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <span className="text-5xl mb-4">🗓️</span>
+            <svg className="w-12 h-12 text-white/30 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 9h18M8 3v4M16 3v4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+            </svg>
             <p className="text-white/60 text-base">
               {filter === 'events'
                 ? 'Nessun evento questa settimana.'
@@ -842,7 +1015,18 @@ export default function ActivitiesPage() {
             const dayItems = grouped[day]
             if (dayItems.length === 0) return null
             return (
-              <section key={day} id={`day-${day}`} className="scroll-mt-[220px]">
+              <section
+                key={day}
+                id={`day-${day}`}
+                data-day={day}
+                ref={(el) => {
+                  // Registra/de-registra la section nel ref-map per
+                  // l'IntersectionObserver del sync DayStrip ↔ lista.
+                  if (el) dayHeadersRef.current.set(day, el)
+                  else dayHeadersRef.current.delete(day)
+                }}
+                className="scroll-mt-[220px]"
+              >
                 <h2 className="text-[#E8A838] font-semibold text-sm mb-3 uppercase tracking-wider">
                   {DAYS_IT[idx]}
                 </h2>
@@ -854,6 +1038,7 @@ export default function ActivitiesPage() {
                         activity={item.activity}
                         currentMemberId={member?.id}
                         onSetMyStatus={handleSetMyActivityStatus}
+                        onSubmitModified={handleSubmitActivityModified}
                         onClearMyStatus={clearMyAttendance}
                       />
                     ) : (
@@ -862,6 +1047,7 @@ export default function ActivitiesPage() {
                         event={item.event}
                         currentMemberId={member?.id}
                         onSetMyStatus={handleSetMyEventStatus}
+                        onSubmitModified={handleSubmitEventModified}
                         onClearMyStatus={clearMyEventAttendance}
                       />
                     )
@@ -873,47 +1059,21 @@ export default function ActivitiesPage() {
         )}
       </div>
 
-      {/* FAB */}
-      <button
-        onClick={() => setSheetOpen(true)}
-        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-[#E8A838] shadow-lg shadow-[#E8A838]/30 flex items-center justify-center text-[#1a1a2e] text-2xl font-bold hover:bg-[#E8A838]/90 active:scale-95 transition-all"
-        aria-label="Crea evento o attività"
-      >
-        +
-      </button>
-
-      {/* Modified notes overlay. Stessa UX per attivita` ed eventi:
-          discriminator nella state determina l'API da chiamare al confirm. */}
-      {modNotesOpen && (
-        <div className="fixed inset-0 z-50 flex items-end">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setModNotesOpen(null)} />
-          <div className="relative w-full bg-[#1a1a2e] rounded-t-2xl p-6 flex flex-col gap-4">
-            <h3 className="text-white font-semibold text-base text-center">Note modifica</h3>
-            <textarea
-              value={modNotes[`${modNotesOpen.kind}-${modNotesOpen.id}`] ?? ''}
-              onChange={(e) =>
-                setModNotes((prev) => ({
-                  ...prev,
-                  [`${modNotesOpen.kind}-${modNotesOpen.id}`]: e.target.value,
-                }))
-              }
-              placeholder={
-                modNotesOpen.kind === 'activity'
-                  ? "Spiega come è stata modificata l'attività..."
-                  : 'Spiega come hai modificato la tua partecipazione...'
-              }
-              rows={3}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 text-sm resize-none focus:outline-none focus:border-[#E8A838]/60"
-            />
-            <button
-              onClick={handleModifiedConfirm}
-              className="w-full py-3 rounded-xl bg-[#E8A838] text-[#1a1a2e] font-bold text-sm"
-            >
-              Conferma modifica ✏️
-            </button>
-          </div>
-        </div>
-      )}
+      {/* "+" nell'header globale via portal (convenzione "+ in header"
+          condivisa col feed). Sostituisce il vecchio FAB fixed in basso
+          a destra. */}
+      <HeaderActionPortal>
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[#E8A838] hover:bg-white/10 transition-colors"
+          aria-label="Crea evento o attività"
+        >
+          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </HeaderActionPortal>
 
       {/* Create item sheet unificata: default su 'activity' qui (pagina
           Attivita`/Settimana), ma con toggle interno per creare anche
