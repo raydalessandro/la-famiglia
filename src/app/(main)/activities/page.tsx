@@ -696,33 +696,35 @@ function DayStrip({
             data-day-strip={d.day}
             data-today={d.isToday}
             onClick={() => onDayClick(d.day)}
-            className={`shrink-0 flex flex-col items-center justify-center min-w-[58px] h-[72px] rounded-2xl border relative transition-colors ${bgClass} ${ringClass}`}
+            className={`shrink-0 flex flex-col items-center justify-center min-w-[56px] h-[42px] rounded-xl border relative transition-colors ${bgClass} ${ringClass}`}
             // Shadow gold attenuata (era 0 8px 20px -8px @0.5, ora piu` discreta)
-            style={d.isToday ? { boxShadow: '0 4px 12px -6px rgba(232, 168, 56, 0.35)' } : undefined}
+            style={d.isToday ? { boxShadow: '0 3px 8px -4px rgba(232, 168, 56, 0.35)' } : undefined}
           >
-            <span className={`text-[11px] font-medium uppercase tracking-wide ${shortColor}`}>
+            <span className={`text-[10px] font-medium uppercase tracking-wide leading-none ${shortColor}`}>
               {d.short}
             </span>
-            <span className={`text-[20px] font-bold leading-none mt-0.5 ${numColor}`}>
+            <span className={`text-[15px] font-bold leading-none mt-0.5 ${numColor}`}>
               {d.dayNumber}
             </span>
-            <div className="flex gap-1 mt-1.5 h-1">
-              {d.hasActivity && (
-                <span
-                  className="w-1 h-1 rounded-full"
-                  style={{ background: d.isToday ? 'rgba(26,26,46,0.6)' : '#E8A838' }}
-                />
-              )}
-              {d.hasEvent && (
-                <span
-                  className="w-1 h-1 rounded-full"
-                  style={{ background: d.isToday ? 'rgba(26,26,46,0.6)' : '#E85D75' }}
-                />
-              )}
-            </div>
+            {(d.hasActivity || d.hasEvent) && (
+              <div className="flex gap-0.5 mt-0.5 h-0.5 absolute bottom-1">
+                {d.hasActivity && (
+                  <span
+                    className="w-0.5 h-0.5 rounded-full"
+                    style={{ background: d.isToday ? 'rgba(26,26,46,0.6)' : '#E8A838' }}
+                  />
+                )}
+                {d.hasEvent && (
+                  <span
+                    className="w-0.5 h-0.5 rounded-full"
+                    style={{ background: d.isToday ? 'rgba(26,26,46,0.6)' : '#E85D75' }}
+                  />
+                )}
+              </div>
+            )}
             {d.needsResponse && (
               <span
-                className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
+                className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full"
                 style={{
                   background: d.isToday ? '#1a1a2e' : '#E8A838',
                   animation: 'day-pulse 2s ease-in-out infinite',
@@ -1025,7 +1027,7 @@ export default function ActivitiesPage() {
                   if (el) dayHeadersRef.current.set(day, el)
                   else dayHeadersRef.current.delete(day)
                 }}
-                className="scroll-mt-[220px]"
+                className="scroll-mt-[190px]"
               >
                 <h2 className="text-[#E8A838] font-semibold text-sm mb-3 uppercase tracking-wider">
                   {DAYS_IT[idx]}
