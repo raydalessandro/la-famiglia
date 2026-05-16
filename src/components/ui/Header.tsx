@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useRouter } from 'next/navigation'
+import { Logo } from './Logo'
 
 type HeaderProps = {
   title?: string
@@ -62,42 +63,20 @@ export function Header({ title = 'La Famiglia', showBack, leftAction, rightActio
         </div>
 
         {/* Centro:
-         *  - Default ("La Famiglia"): SVG wordmark con icona casa
-         *    dorata + "La" bianco + "Famiglia" oro. Identita` brand.
+         *  - Default ("La Famiglia"): Logo spirale a sinistra + "La"
+         *    bianco + "Famiglia" oro. Identita` brand.
          *  - Override: titolo testo gold (es. "Commenti", "Profilo")
          *    su pagine secondarie con showBack/title custom.
          * absolute al centro geometrico → resta centrato qualunque
          * sia il contenuto di left/right. pointer-events-none lascia
          * passare i tap. */}
         {title === 'La Famiglia' && !showBack ? (
-          <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-            <svg
-              viewBox="0 0 200 50"
-              width="160"
-              height="40"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-label="La Famiglia"
-            >
-              <path
-                d="M10 28 L25 14 L40 28 M15 28 L15 38 L35 38 L35 28"
-                stroke="#E8A838"
-                strokeWidth="2.5"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle cx="25" cy="30" r="2.5" fill="#E8A838" />
-              <text
-                x="48"
-                y="32"
-                fontFamily="system-ui, -apple-system, sans-serif"
-                fontSize="20"
-                fontWeight="600"
-                fill="#ffffff"
-              >
-                La <tspan fill="#E8A838">Famiglia</tspan>
-              </text>
-            </svg>
+          <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
+            <Logo size={28} className="text-[#E8A838]" />
+            <span className="text-lg font-semibold tracking-tight leading-none">
+              <span className="text-white">La </span>
+              <span className="text-[#E8A838]">Famiglia</span>
+            </span>
           </div>
         ) : (
           <h1 className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-base font-bold tracking-wide text-[#E8A838]">
