@@ -143,14 +143,11 @@ function ActivityCard({
                     <MiniAvatarStack members={confirmed} max={3} />
                   </div>
                 )}
-                {modified.length > 0 && (
-                  <div className="flex items-center gap-1.5" title={`${modified.length} modificano`}>
-                    <svg className="w-3.5 h-3.5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                    </svg>
-                    <MiniAvatarStack members={modified} max={3} />
-                  </div>
-                )}
+                {/* Avatar di chi modifica volutamente NON mostrato nel
+                 * summary chiuso: si confonderebbero con gli avatar di
+                 * confirmed/skipped. Chi ha modificato e` gia` visibile
+                 * nei commenti del box blu quando l'utente espande la
+                 * card. */}
                 {skipped.length > 0 && (
                   <div className="flex items-center gap-1.5 opacity-60" title={`${skipped.length} saltano`}>
                     <svg className="w-3.5 h-3.5 text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -435,14 +432,11 @@ function EventCard({
                     <MiniAvatarStack members={confirmed} max={3} />
                   </div>
                 )}
-                {modified.length > 0 && (
-                  <div className="flex items-center gap-1.5" title={`${modified.length} modificano`}>
-                    <svg className="w-3.5 h-3.5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
-                    </svg>
-                    <MiniAvatarStack members={modified} max={3} />
-                  </div>
-                )}
+                {/* Avatar di chi modifica volutamente NON mostrato nel
+                 * summary chiuso: si confonderebbero con gli avatar di
+                 * confirmed/skipped. Chi ha modificato e` gia` visibile
+                 * nei commenti del box blu quando l'utente espande la
+                 * card. */}
                 {skipped.length > 0 && (
                   <div className="flex items-center gap-1.5 opacity-60" title={`${skipped.length} saltano`}>
                     <svg className="w-3.5 h-3.5 text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
