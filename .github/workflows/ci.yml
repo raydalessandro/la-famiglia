@@ -1,0 +1,42 @@
+# CI — la regola della casa: NULLA va su main senza test verdi.
+# Gira su ogni PR verso main e su ogni push a main (i micro-fix diretti
+# autorizzati restano coperti). Tre gate: lint, unit test, build.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint · Test · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          # La build Next importa i moduli Supabase/web-push a livello di
+          # modulo: bastano placeholder — nessuna chiamata di rete parte
+          # durante il build (le env reali vivono su Vercel).
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
