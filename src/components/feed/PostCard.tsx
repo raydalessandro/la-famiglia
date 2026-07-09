@@ -170,11 +170,15 @@ export function PostCard({
                 post.images.length === 1 ? 'h-72' : 'h-40'
               } ${post.images.length === 3 && idx === 0 ? 'col-span-2' : ''}`}
             >
+              {/* Nel feed la thumb (~480px); l'originale resta al
+                  lightbox. thumb_url è null sui post pre-migration 016
+                  → fallback sull'originale. */}
               <img
-                src={img.image_url}
+                src={img.thumb_url ?? img.image_url}
                 alt=""
                 className="w-full h-full object-cover"
                 loading="lazy"
+                decoding="async"
               />
               {idx === 3 && post.images.length > 4 && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center">

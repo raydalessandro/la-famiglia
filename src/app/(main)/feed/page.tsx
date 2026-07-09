@@ -42,6 +42,10 @@ export default function FeedPage() {
   const [formText, setFormText] = useState('')
   const [formType, setFormType] = useState<'normal' | 'recipe' | 'story'>('normal')
   const [formImages, setFormImages] = useState<File[]>()
+  // Thumbnail parallele a formImages (stesso indice), generate alla
+  // selezione insieme alla versione full (Affinamento A3): il feed
+  // scarica ~480px invece dell'originale 1920px.
+  const [formThumbs, setFormThumbs] = useState<File[]>()
   const [formPreviews, setFormPreviews] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -98,13 +102,19 @@ export default function FeedPage() {
     // Reset early so the same picker can be reopened even if a file fails.
     e.target.value = ''
     const compressed: File[] = []
+    const thumbs: File[] = []
     const previews: string[] = []
     const failed: string[] = []
     for (const file of files) {
       try {
+        // Due taglie per foto: full (feed page singolo + lightbox) e
+        // thumb (griglia del feed). La preview del composer usa la thumb
+        // — più leggera e istantanea.
         const comp = await compressImage(file)
+        const thumb = await compressImage(file, 480, 0.7)
         compressed.push(comp)
-        previews.push(URL.createObjectURL(comp))
+        thumbs.push(thumb)
+        previews.push(URL.createObjectURL(thumb))
       } catch (err) {
         // Per debug: l'errore arriva con prefisso [compressImage]. Su iPhone
         // si vede con Eruda. Mai silenziare un fallimento utente.
@@ -114,6 +124,7 @@ export default function FeedPage() {
     }
     if (compressed.length > 0) {
       setFormImages((prev) => [...(prev ?? []), ...compressed])
+      setFormThumbs((prev) => [...(prev ?? []), ...thumbs])
       setFormPreviews((prev) => [...prev, ...previews])
     }
     if (failed.length > 0) {
@@ -127,6 +138,7 @@ export default function FeedPage() {
 
   const handleRemoveImage = (idx: number) => {
     setFormImages((prev) => prev?.filter((_, i) => i !== idx))
+    setFormThumbs((prev) => prev?.filter((_, i) => i !== idx))
     setFormPreviews((prev) => prev.filter((_, i) => i !== idx))
   }
 
@@ -134,6 +146,7 @@ export default function FeedPage() {
     setFormText('')
     setFormType('normal')
     setFormImages(undefined)
+    setFormThumbs(undefined)
     setFormPreviews([])
     setPollEnabled(false)
     setPollQuestion('')
@@ -188,6 +201,7 @@ export default function FeedPage() {
       text: formText.trim(),
       post_type: formType,
       images: formImages,
+      thumbs: formThumbs,
       poll: poll ?? undefined,
     })
     setIsSubmitting(false)

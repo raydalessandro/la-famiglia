@@ -145,5 +145,6 @@ dopo controllo su device reale (iPhone incluso).
 | Task | Stato | PR |
 |------|-------|----|
 | A1 | ✅ merged | #67 |
-| A2 | in PR | #68 |
-| A3–A5, B, C | da fare | — |
+| A2 | ✅ merged | #68 |
+| A3 | in PR (migration 016 applicata al DB) | #69 |
+| A4–A5, B, C | da fare | — |
