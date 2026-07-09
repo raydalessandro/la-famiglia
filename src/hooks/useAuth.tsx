@@ -1,6 +1,7 @@
 'use client'
 
 import { MemberPublic } from '@/types/database'
+import { clearSwrCache } from '@/lib/swr-cache'
 import { useState, useEffect, useCallback, createContext, useContext } from 'react'
 
 type AuthContextValue = {
@@ -54,6 +55,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
     const result = await response.json()
     if (result.data) {
+      // Cambio di identità: la cache SWR del member precedente (feed con
+      // liked_by_me, unread counts, ...) non deve trapelare al nuovo.
+      clearSwrCache()
       setMember(result.data.member)
       return true
     }
@@ -64,6 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await fetch('/api/auth', { method: 'DELETE' })
     } finally {
+      clearSwrCache()
       setMember(null)
     }
   }, [])
@@ -93,4 +98,14 @@ export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext)
   if (!context) throw new Error('useAuth must be used within AuthProvider')
   return context
+}
+
+/**
+ * Variante non-throwing per gli hook dati (usePosts, useMembers, ...):
+ * fuori da un AuthProvider (unit test renderHook senza wrapper) ritorna
+ * null invece di lanciare — gli hook degradano a "cache disabilitata"
+ * e il comportamento di fetch resta identico.
+ */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext)
 }
