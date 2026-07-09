@@ -100,30 +100,125 @@ export function usePosts(authorId?: string): UsePostsReturn {
     fetchPosts()
   }, [fetchPosts])
 
-  // Refetch debounced — i canali realtime su posts/post_reactions/
-  // post_poll_votes notificano TUTTI i client (incluso quello che ha
-  // fatto l'action). Senza debounce un tap rapido su piu` reazioni
-  // genera molti fetchPosts concorrenti che si sovrascrivono e
-  // producono "compare/scompare/riappare" visivo (flicker reactions
-  // segnalato). 600ms collassa il burst in un solo refetch.
-  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scheduleRefetch = useCallback(() => {
-    if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current)
-    refetchTimerRef.current = setTimeout(() => {
-      refetchTimerRef.current = null
-      fetchPosts()
-    }, 600)
-  }, [fetchPosts])
+  // ─── Realtime chirurgico (Fase A4) ─────────────────────────────────
+  // Prima OGNI evento realtime (nuovo post, reaction, voto) causava un
+  // fetchPosts completo che resettava la lista a pagina 1: se avevi
+  // scrollato, il feed collassava a 10 post. Ora ogni evento tocca SOLO
+  // il post interessato:
+  //   posts INSERT      → fetch del singolo post e prepend
+  //   posts DELETE      → rimozione locale (payload.old ha la riga:
+  //                       REPLICA IDENTITY FULL da migration 002)
+  //   posts UPDATE      → refetch del singolo post, replace in place
+  //   reactions / votes → refetch (debounced per-post) del post toccato
+  // La pagination non si resetta mai. Il debounce per-post (400ms)
+  // collassa i burst di reazioni sullo stesso post in un solo fetch —
+  // stessa cura anti-flicker del vecchio debounce globale, ma senza
+  // buttare via la lista.
 
-  useEffect(() => {
-    return () => {
-      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current)
+  // Ref sempre aggiornata: i callback realtime vivono più a lungo del
+  // render corrente e non devono catturare uno state stantio.
+  const postsRef = useRef<PostWithDetails[]>(posts)
+  postsRef.current = posts
+
+  /** Fetch del singolo post → replace in place (o prepend se `prepend`). */
+  const refetchSinglePost = useCallback(async (postId: string, prepend = false) => {
+    try {
+      const res = await fetch(`/api/posts/${postId}`)
+      if (!res.ok) {
+        // 404: post eliminato tra l'evento e il fetch — rimuovilo.
+        if (res.status === 404) {
+          setPosts((prev) => prev.filter((p) => p.id !== postId))
+        }
+        return
+      }
+      const json: { data: PostWithDetails | null } = await res.json()
+      const fresh = json.data
+      if (!fresh) return
+      setPosts((prev) => {
+        if (prev.some((p) => p.id === postId)) {
+          return prev.map((p) => (p.id === postId ? fresh : p))
+        }
+        return prepend ? [fresh, ...prev] : prev
+      })
+    } catch {
+      // Rete assente: lo stato locale resta con l'ultima verità nota.
     }
   }, [])
 
-  useRealtimeSubscription('posts', scheduleRefetch, undefined, true)
-  useRealtimeSubscription('post_reactions', scheduleRefetch, undefined, true)
-  useRealtimeSubscription('post_poll_votes', scheduleRefetch, undefined, true)
+  // Debounce per-post: un timer per post id.
+  const patchTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const schedulePostPatch = useCallback((postId: string) => {
+    const timers = patchTimersRef.current
+    const existing = timers.get(postId)
+    if (existing) clearTimeout(existing)
+    timers.set(
+      postId,
+      setTimeout(() => {
+        timers.delete(postId)
+        refetchSinglePost(postId)
+      }, 400),
+    )
+  }, [refetchSinglePost])
+
+  useEffect(() => {
+    const timers = patchTimersRef.current
+    return () => {
+      for (const t of timers.values()) clearTimeout(t)
+      timers.clear()
+    }
+  }, [])
+
+  useRealtimeSubscription<{ id: string; author_id: string }>(
+    'posts',
+    (event, payload) => {
+      if (event === 'INSERT' && payload.new) {
+        const row = payload.new
+        // Vista profilo: ignora i post di altri autori.
+        if (authorId && row.author_id !== authorId) return
+        if (postsRef.current.some((p) => p.id === row.id)) return
+        setTotal((t) => t + 1)
+        refetchSinglePost(row.id, true)
+      } else if (event === 'DELETE' && payload.old) {
+        const deletedId = payload.old.id
+        if (postsRef.current.some((p) => p.id === deletedId)) {
+          setPosts((prev) => prev.filter((p) => p.id !== deletedId))
+          setTotal((t) => Math.max(0, t - 1))
+        }
+      } else if (event === 'UPDATE' && payload.new) {
+        if (postsRef.current.some((p) => p.id === payload.new!.id)) {
+          schedulePostPatch(payload.new.id)
+        }
+      }
+    },
+    undefined,
+    true,
+  )
+
+  // Reactions e voti: il payload porta post_id sia su INSERT che su
+  // DELETE (REPLICA IDENTITY FULL, migration 007/009). Patch solo se il
+  // post è attualmente in lista.
+  const onRowTouched = useCallback(
+    (_event: 'INSERT' | 'UPDATE' | 'DELETE', payload: { new: { post_id: string } | null; old: { post_id: string } | null }) => {
+      const postId = payload.new?.post_id ?? payload.old?.post_id
+      if (postId && postsRef.current.some((p) => p.id === postId)) {
+        schedulePostPatch(postId)
+      }
+    },
+    [schedulePostPatch],
+  )
+  useRealtimeSubscription<{ post_id: string }>('post_reactions', onRowTouched, undefined, true)
+  useRealtimeSubscription<{ post_id: string }>('post_poll_votes', onRowTouched, undefined, true)
+
+  // Mantieni fresco lo snapshot cache di pagina 1 anche dopo i patch
+  // chirurgici, così il prossimo mount riparte dall'ultima verità nota.
+  useEffect(() => {
+    if (isLoading) return
+    writeCache<CachedFeedPage>(key, {
+      posts: posts.slice(0, PER_PAGE),
+      total,
+      hasMore,
+    })
+  }, [posts, total, hasMore, isLoading, key])
 
   const loadMore = useCallback(async () => {
     const nextPage = page + 1
@@ -269,17 +364,18 @@ export function usePosts(authorId?: string): UsePostsReturn {
         if (!res.ok) throw new Error('Reaction failed')
         // No refetch esplicito qui — l'optimistic update e` gia` accurato
         // (member_id + emoji corretti, solo l'id e` temp ma non lo usiamo
-        // per altre op). Il realtime channel sincronizzera` con debounce
-        // entro 600ms se serve. Refetch esplicito qui causava il flicker
-        // perche` la response del POST arrivava prima del realtime e
-        // sovrascriveva lo state ottimistico con dati non ancora indicizzati
-        // server-side → reaction sparisce → poi realtime refetch → riappare.
+        // per altre op). Il realtime channel sincronizzera` (patch
+        // debounced del singolo post) entro ~400ms se serve. Refetch
+        // esplicito qui causava il flicker perche` la response del POST
+        // arrivava prima del realtime e sovrascriveva lo state ottimistico
+        // con dati non ancora indicizzati server-side → reaction sparisce
+        // → poi realtime refetch → riappare.
       } catch {
-        // Rollback by resync server-truth (debounced)
-        scheduleRefetch()
+        // Rollback: risincronizza il SOLO post interessato col server.
+        refetchSinglePost(postId)
       }
     },
-    [posts, scheduleRefetch],
+    [posts, refetchSinglePost],
   )
 
   const addComment = useCallback(async (postId: string, text: string): Promise<boolean> => {
@@ -299,7 +395,44 @@ export function usePosts(authorId?: string): UsePostsReturn {
     }
   }, [])
 
+  // Voto ottimistico: barre aggiornate al tap, poi il refetch del
+  // SINGOLO post riconcilia con la verità server (prima: fetchPosts
+  // completo sia su successo che su errore → lento + reset pagination).
+  const patchPollOptimistic = useCallback(
+    (postId: string, optionId: string, voted: boolean) => {
+      setPosts((prev) =>
+        prev.map((p) => {
+          if (p.id !== postId || !p.poll) return p
+          const options = p.poll.options.map((opt) => {
+            if (opt.id === optionId) {
+              return {
+                ...opt,
+                voted_by_me: voted,
+                vote_count: Math.max(0, opt.vote_count + (voted ? 1 : -1)),
+              }
+            }
+            // Single-choice: votare un'opzione ritira il mio voto dalle altre.
+            if (voted && !p.poll!.multi_choice && opt.voted_by_me) {
+              return { ...opt, voted_by_me: false, vote_count: Math.max(0, opt.vote_count - 1) }
+            }
+            return opt
+          })
+          return {
+            ...p,
+            poll: {
+              ...p.poll,
+              options,
+              total_votes: options.reduce((sum, o) => sum + o.vote_count, 0),
+            },
+          }
+        }),
+      )
+    },
+    [],
+  )
+
   const votePoll = useCallback(async (postId: string, optionId: string): Promise<void> => {
+    patchPollOptimistic(postId, optionId, true)
     try {
       const res = await fetch(`/api/posts/${postId}/poll/vote`, {
         method: 'POST',
@@ -307,30 +440,32 @@ export function usePosts(authorId?: string): UsePostsReturn {
         body: JSON.stringify({ option_id: optionId }),
       })
       if (!res.ok) throw new Error('Vote failed')
-      fetchPosts()
-    } catch {
-      fetchPosts()
+    } finally {
+      // Riconcilia sempre col server — anche il caso errore torna alla
+      // verità precedente senza buttare via la lista.
+      refetchSinglePost(postId)
     }
-  }, [fetchPosts])
+  }, [patchPollOptimistic, refetchSinglePost])
 
   const retractPollVote = useCallback(async (postId: string, optionId?: string | null): Promise<void> => {
+    if (optionId) patchPollOptimistic(postId, optionId, false)
     try {
       const url = optionId
         ? `/api/posts/${postId}/poll/vote?option_id=${encodeURIComponent(optionId)}`
         : `/api/posts/${postId}/poll/vote`
       const res = await fetch(url, { method: 'DELETE' })
       if (!res.ok) throw new Error('Retract failed')
-      fetchPosts()
-    } catch {
-      fetchPosts()
+    } finally {
+      refetchSinglePost(postId)
     }
-  }, [fetchPosts])
+  }, [patchPollOptimistic, refetchSinglePost])
 
   const deletePost = useCallback(async (postId: string): Promise<boolean> => {
     try {
       const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' })
       if (res.ok) {
         setPosts((prev) => prev.filter((p) => p.id !== postId))
+        setTotal((t) => Math.max(0, t - 1))
         return true
       }
       return false
