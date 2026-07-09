@@ -532,6 +532,71 @@ describe('compressImage', () => {
     expect(result.name).toMatch(/\.jpg$/)
   })
 
+  it('falls back to JPEG when the browser silently encodes PNG instead of WebP (Safari reale)', async () => {
+    // Il VERO comportamento di Safari/iOS: canvas.toBlob('image/webp')
+    // non ritorna null — per spec HTML ripiega silenziosamente su PNG
+    // (blob.type === 'image/png'). Il vecchio codice controllava solo il
+    // null, quindi spediva PNG fotografici multi-MB etichettati .webp:
+    // sopra il limite di upload → "errore caricamento foto" solo su
+    // iPhone. Il fallback deve scattare sul TYPE reale del blob.
+    const toBlobCalls: string[] = []
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+      toBlob: vi.fn((cb: BlobCallback, type?: string) => {
+        toBlobCalls.push(type ?? '')
+        if (type === 'image/webp') {
+          cb(new Blob(['pngbytes'], { type: 'image/png' })) // Safari fallback
+        } else {
+          cb(new Blob(['jpegbytes'], { type: 'image/jpeg' }))
+        }
+      }),
+    }
+    document.createElement = vi.fn((tag: string) => {
+      if (tag === 'canvas') return mockCanvas as unknown as HTMLElement
+      return originalCreateElement(tag)
+    })
+
+    const file = makeFile('photo.jpg', 'image/jpeg', 10_000)
+    const result = await storage.compressImage(file)
+
+    expect(toBlobCalls).toEqual(['image/webp', 'image/jpeg'])
+    expect(result.type).toBe('image/jpeg')
+    expect(result.name).toMatch(/\.jpg$/)
+  })
+
+  it('riprova a quality decrescente se il blob supera il limite di upload (4MB)', async () => {
+    // Il body delle serverless Vercel è cappato a 4.5MB: un blob più
+    // grande fallirebbe SEMPRE l'upload con un errore opaco. Meglio
+    // ricomprimere più aggressivamente client-side.
+    const qualities: (number | undefined)[] = []
+    const bigBytes = new Uint8Array(5 * 1024 * 1024)
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+      toBlob: vi.fn((cb: BlobCallback, type?: string, q?: number) => {
+        qualities.push(q)
+        if (q !== undefined && q <= 0.5) {
+          cb(new Blob(['small'], { type: 'image/jpeg' }))
+        } else {
+          cb(new Blob([bigBytes], { type: type === 'image/webp' ? 'image/webp' : 'image/jpeg' }))
+        }
+      }),
+    }
+    document.createElement = vi.fn((tag: string) => {
+      if (tag === 'canvas') return mockCanvas as unknown as HTMLElement
+      return originalCreateElement(tag)
+    })
+
+    const file = makeFile('photo.jpg', 'image/jpeg', 10_000)
+    const result = await storage.compressImage(file)
+
+    expect(result.size).toBeLessThanOrEqual(4 * 1024 * 1024)
+    expect(result.type).toBe('image/jpeg')
+  })
+
   it('throws a tagged [compressImage] error when both WebP and JPEG return null', async () => {
     // Catastrophic case: neither encoder produces a blob. Must throw with a
     // recognisable prefix so the caller (and our Eruda logs) can identify it.

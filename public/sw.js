@@ -1,7 +1,7 @@
 // Bump this on every release that touches client-side code or the app shell —
 // the activate handler purges any cache whose name doesn't match, which is
 // what forces installed PWAs to pick up the new bundle.
-const CACHE_NAME = 'la-famiglia-v5'
+const CACHE_NAME = 'la-famiglia-v6'
 
 // Why no APP_SHELL precache:
 // The previous version precached ['/feed', '/activities', '/calendar', ...]
@@ -119,18 +119,29 @@ async function processQueue() {
   }
 }
 
-// Push notifications
+// Push notifications.
+//
+// iOS nota bene: Safari REVOCA la subscription se il SW riceve push senza
+// mostrare una notifica ("silent push" — tolleranza 3 strike). Quindi qui
+// mostriamo SEMPRE qualcosa, anche con payload assente o malformato:
+// meglio un banner generico che perdere la subscription in silenzio.
 self.addEventListener('push', (event) => {
-  if (!event.data) return
-
   let data = {}
-  try {
-    data = event.data.json()
-  } catch {
-    data = { title: 'La Famiglia', body: event.data.text(), url: '/feed' }
+  if (event.data) {
+    try {
+      data = event.data.json()
+    } catch {
+      data = { title: 'La Famiglia', body: event.data.text() }
+    }
   }
 
-  const { title = 'La Famiglia', body = '', icon = '/icons/icon-192x192.png', badge = '/icons/icon-192x192.png', url = '/feed' } = data
+  // Il server manda `link`; versioni precedenti del SW leggevano solo
+  // `url` (per questo i tap aprivano sempre /feed). Accettiamo entrambi.
+  const title = data.title || 'La Famiglia'
+  const body = data.body || ''
+  const icon = data.icon || '/icons/icon-192x192.png'
+  const badge = data.badge || '/icons/icon-192x192.png'
+  const url = data.link || data.url || '/feed'
 
   event.waitUntil(
     self.registration.showNotification(title, {
@@ -151,16 +162,71 @@ self.addEventListener('notificationclick', (event) => {
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
-        // Focus existing window if already open at that URL
+        // Riusa una finestra già aperta: confronto sul pathname perché
+        // client.url è assoluto ('https://…/feed') mentre `url` è
+        // relativo — il vecchio confronto stretto non matchava mai.
         for (const client of clientList) {
-          if (client.url === url && 'focus' in client) {
+          let path = null
+          try {
+            path = new URL(client.url).pathname
+          } catch {}
+          if (path === url && 'focus' in client) {
             return client.focus()
           }
         }
-        // Otherwise open a new window
+        // Altrimenti naviga una finestra esistente (la PWA iOS ha sempre
+        // al massimo una finestra) o aprine una nuova.
+        const existing = clientList.find((c) => 'navigate' in c && 'focus' in c)
+        if (existing) {
+          return existing.focus().then((c) => (c && c.navigate ? c.navigate(url) : c))
+        }
         if (self.clients.openWindow) {
           return self.clients.openWindow(url)
         }
       })
   )
 })
+
+// Rotazione della subscription (iOS la ruota dopo restore da backup,
+// update di sistema, ecc.). Senza questo handler l'endpoint registrato
+// nel DB muore in silenzio e le push "smettono di arrivare" finché
+// l'utente non ripassa da Impostazioni. Qui ci ri-iscriviamo con la
+// stessa VAPID key e ri-registriamo l'endpoint al server (upsert
+// idempotente, il cookie di sessione viaggia con la fetch same-origin).
+self.addEventListener('pushsubscriptionchange', (event) => {
+  const resubscribe = (async () => {
+    let appServerKey =
+      (event.oldSubscription && event.oldSubscription.options &&
+        event.oldSubscription.options.applicationServerKey) || null
+
+    if (!appServerKey) {
+      const res = await fetch('/api/push/public-key')
+      if (!res.ok) return
+      const json = await res.json()
+      if (!json || !json.data || !json.data.key) return
+      appServerKey = urlBase64ToUint8Array(json.data.key)
+    }
+
+    const sub = await self.registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: appServerKey,
+    })
+    const body = sub.toJSON()
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: body.endpoint, keys: body.keys }),
+    })
+  })().catch(() => {})
+
+  event.waitUntil(resubscribe)
+})
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  const output = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i)
+  return output
+}

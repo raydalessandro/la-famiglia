@@ -225,12 +225,13 @@ export default function SettingsPage() {
       <div className="px-4 py-5 space-y-6 pb-28">
 
         {/* Hidden file input — triggerato dal pulsante "Carica foto" nel
-            picker sotto. accept="image/*" su mobile apre la scelta nativa
-            tra fotocamera e galleria; lasciamo decidere al SO. */}
+            picker sotto. MIME espliciti (non image/*) come su feed/chat:
+            su iPhone forzano la conversione HEIC→JPEG alla selezione,
+            senza perdere la scelta nativa fotocamera/galleria. */}
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
@@ -535,19 +536,34 @@ export default function SettingsPage() {
               onClick={async () => {
                 try {
                   const res = await fetch('/api/push/test', { method: 'POST' })
-                  const json = await res.json().catch(() => null) as { data: { sent: boolean } | null; error: string | null } | null
+                  const json = await res.json().catch(() => null) as {
+                    data: {
+                      sent: boolean
+                      skippedReason?: string | null
+                      attempts?: { endpointHost: string; ok: boolean; statusCode: number | null; cleanedUp: boolean }[]
+                    } | null
+                    error: string | null
+                  } | null
                   if (!res.ok) {
                     toast.error(json?.error ?? `Errore ${res.status}`)
                     return
                   }
-                  if (json?.data?.sent) {
+                  const data = json?.data
+                  if (data?.sent) {
                     toast.success('Notifica inviata. Controlla il dispositivo.')
-                  } else {
-                    // sent=false: il backend non ha trovato subscription per
-                    // questo member, oppure notify_push è false nonostante
-                    // il toggle. Probabile desync DB/browser.
+                  } else if (data?.attempts?.some((a) => a.cleanedUp)) {
+                    // Il push service ha risposto 410/404: la subscription
+                    // era scaduta (tipico dopo reinstall PWA su iPhone) ed
+                    // è stata rimossa dal server.
+                    toast.error('La registrazione era scaduta. Disattiva e riattiva il toggle qui sopra.')
+                  } else if (data?.skippedReason === 'no_subscriptions') {
                     toast.error('Nessuna subscription registrata. Disattiva e riattiva il toggle.')
+                  } else {
+                    toast.error('Invio non riuscito. Disattiva e riattiva il toggle, poi riprova.')
                   }
+                  // Dettaglio completo in console — visibile con Eruda
+                  // (?debug=1) direttamente da iPhone.
+                  console.log('[push-test]', data)
                 } catch {
                   toast.error('Errore di rete. Riprova.')
                 }

@@ -125,27 +125,43 @@ export async function compressImage(
   }
   ctx.drawImage(img, 0, 0, width, height)
 
-  // Try WebP, fall back to JPEG. We don't rely on feature detection
-  // because Safari iOS historically *claimed* to support WebP encoding
-  // and then quietly returned `null`. Safer to try and fall back on the
-  // actual call.
-  const tryEncode = (mime: 'image/webp' | 'image/jpeg') =>
+  // Try WebP, fall back to JPEG. ATTENZIONE Safari/iOS: quando il browser
+  // non sa encodare il MIME richiesto, per spec HTML canvas.toBlob NON
+  // ritorna null — ritorna silenziosamente un PNG (blob.type =
+  // 'image/png'). Su iPhone questo produceva PNG fotografici da 4-8MB
+  // etichettati come .webp: sopra il limite body di Vercel (4.5MB) e del
+  // server (5MB) → "errore caricamento foto" solo su iOS. Quindi il
+  // fallback va deciso sul type REALE del blob, mai sul null.
+  const tryEncode = (mime: 'image/webp' | 'image/jpeg', q: number) =>
     new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), mime, quality)
+      canvas.toBlob((b) => resolve(b), mime, q)
     })
 
-  let blob: Blob | null = await tryEncode('image/webp')
-  let chosenMime: 'image/webp' | 'image/jpeg' = 'image/webp'
-  if (!blob) {
-    blob = await tryEncode('image/jpeg')
-    chosenMime = 'image/jpeg'
+  let blob: Blob | null = await tryEncode('image/webp', quality)
+  if (!blob || blob.type !== 'image/webp') {
+    blob = await tryEncode('image/jpeg', quality)
+    if (blob && blob.type !== 'image/jpeg') blob = null
+  }
+
+  // Rete di sicurezza sulla dimensione: il body delle serverless Vercel è
+  // cappato a 4.5MB, quindi il file DEVE stare sotto ~4MB. Foto molto
+  // dettagliate a quality 0.8 possono sforare: riproviamo in JPEG a
+  // quality decrescente prima di arrenderci.
+  const MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+  for (const q of [0.7, 0.5, 0.35]) {
+    if (blob && blob.size <= MAX_UPLOAD_BYTES) break
+    const retry = await tryEncode('image/jpeg', q)
+    if (retry && retry.type === 'image/jpeg') blob = retry
   }
 
   if (!blob) {
-    throw new Error('[compressImage] canvas.toBlob returned null for both webp and jpeg')
+    throw new Error('[compressImage] canvas.toBlob returned no usable blob (webp+jpeg)')
+  }
+  if (blob.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`[compressImage] compressed image still too large (${blob.size} bytes)`)
   }
 
-  const extension = chosenMime === 'image/webp' ? '.webp' : '.jpg'
-  const newName = file.name.replace(/\.[^.]+$/, extension)
-  return new File([blob], newName, { type: chosenMime })
+  const extension = blob.type === 'image/webp' ? '.webp' : '.jpg'
+  const newName = file.name.replace(/\.[^.]+$/, '') + extension
+  return new File([blob], newName, { type: blob.type })
 }

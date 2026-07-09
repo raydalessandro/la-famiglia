@@ -215,6 +215,27 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
     navigator.serviceWorker.register('/sw.js').catch(() => {})
 
+    // Auto-heal push a ogni apertura dell'app (non solo in Settings): se
+    // il browser ha una subscription attiva la ri-registriamo al server.
+    // L'upsert è idempotente; ripara il caso iPhone in cui la riga DB è
+    // stata pulita (410) o l'endpoint è ruotato, senza che l'utente debba
+    // toccare nulla. Best-effort silenzioso.
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      navigator.serviceWorker.ready
+        .then((reg) => reg.pushManager.getSubscription())
+        .then((sub) => {
+          if (!sub) return
+          const json = sub.toJSON()
+          if (!json.endpoint || !json.keys) return
+          return fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+          })
+        })
+        .catch(() => {})
+    }
+
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'PROCESS_OFFLINE_QUEUE') {
         processQueue().catch(() => {})

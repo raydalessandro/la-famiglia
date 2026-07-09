@@ -134,8 +134,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: null, error: postError?.message ?? 'Errore creazione post' }, { status: 500 })
   }
 
-  // Upload images and insert post_images records
+  // Upload images and insert post_images records. Gli errori dei singoli
+  // upload NON vengono più inghiottiti in silenzio: se l'utente ha
+  // allegato foto e NESSUNA è stata caricata, il post viene eliminato e
+  // l'errore torna al client — un post "senza foto" pubblicato a sorpresa
+  // è peggio di un errore chiaro (bug iPhone: l'upload falliva sempre e
+  // gli utenti vedevano post mutilati).
   if (imageFiles.length > 0) {
+    let uploaded = 0
+    let lastUploadError = 'Upload fallito'
     for (let i = 0; i < imageFiles.length; i++) {
       const file = imageFiles[i]
       if (!file || file.size === 0) continue
@@ -147,9 +154,20 @@ export async function POST(req: NextRequest) {
           image_url: imageUrl,
           sort_order: i,
         })
+        uploaded++
       } catch (err: unknown) {
+        lastUploadError = err instanceof Error ? err.message : 'Upload fallito'
         console.error(`Error uploading image ${i} for post ${post.id}:`, err)
       }
+    }
+
+    if (uploaded === 0 && !text && !pollInput) {
+      // Post fatto SOLO di foto e nessuna è passata: niente da pubblicare.
+      await db.from('posts').delete().eq('id', post.id)
+      return NextResponse.json(
+        { data: null, error: `Non sono riuscito a caricare le foto. ${lastUploadError}` },
+        { status: 500 },
+      )
     }
   }
 
