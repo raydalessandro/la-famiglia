@@ -2,6 +2,8 @@
 
 import { ActivityWithDetails, CreateActivityInput, UpdateActivityInput, AttendanceStatus, ApiResponse } from '@/types/database'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { useOptionalAuth } from '@/hooks/useAuth'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import { useState, useEffect, useCallback } from 'react'
 
 type UseActivitiesReturn = {
@@ -34,13 +36,19 @@ export function getWeekStart(): string {
 }
 
 export function useActivities(): UseActivitiesReturn {
-  const [activities, setActivities] = useState<ActivityWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (Fase A2), chiave per settimana: al cambio di settimana la
+  // chiave cambia e la vista riparte pulita (niente dati della settimana
+  // scorsa spacciati per attuali). Revalidation sempre in background.
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, `activities:${getWeekStart()}`)
+  const [activities, setActivities] = useState<ActivityWithDetails[]>(
+    () => readCache<ActivityWithDetails[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchActivities = useCallback(async (): Promise<void> => {
     try {
-      setIsLoading(true)
       setError(null)
       const res = await fetch(`/api/activities?week_start=${getWeekStart()}`)
       const data: ApiResponse<ActivityWithDetails[]> = await res.json()
@@ -49,12 +57,13 @@ export function useActivities(): UseActivitiesReturn {
         return
       }
       setActivities(data.data ?? [])
+      writeCache(key, data.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch activities')
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [key])
 
   useEffect(() => {
     fetchActivities()

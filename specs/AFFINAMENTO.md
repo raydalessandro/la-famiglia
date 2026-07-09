@@ -53,11 +53,19 @@ nessun cambio client.
 ### A2 — Cache client stale-while-revalidate
 **File**: nuovo `src/lib/swr-cache.ts` + hook `useCachedFetch`, poi
 adozione in `usePosts`, `useMembers`, `useChatGroups`, `useActivities`.
-**Cosa**: store module-level (Map) + persistenza `sessionStorage`.
-Al mount: se c'è cache → render IMMEDIATO dei dati cached (niente
-skeleton), fetch in background, aggiorna se cambiato. TTL breve (30–60s)
-solo per evitare refetch burst; la revalidation è sempre-on.
+**Cosa**: store module-level (Map) + persistenza `localStorage` (scelto
+al posto di sessionStorage in implementazione: sopravvive al cold start
+della PWA — è lì che si gioca il "feel Instagram"). Al mount: se c'è
+cache → render IMMEDIATO dei dati cached (niente skeleton), fetch in
+background, aggiorna se cambiato. Niente TTL (deciso in implementazione):
+la revalidation è sempre-on, a scala famiglia il costo è trascurabile.
+**Sicurezza**: chiavi SEMPRE scoped per member id (liked_by_me & co.
+dipendono dal viewer; device condivisi) — `cacheKey()` lo impone.
+`clearSwrCache()` a ogni login/logout. Hook senza AuthProvider (test)
+→ chiave null → cache disabilitata, comportamento storico.
 **Regola UX**: skeleton SOLO al primissimo accesso (cache vuota).
+Adottata anche in `useWeekEvents` (chiave per settimana, come
+useActivities).
 **Test**: unit sullo store (get/set/expire/revalidate), test hook con
 fetch mockato (render da cache + update dopo revalidate).
 
@@ -136,5 +144,6 @@ dopo controllo su device reale (iPhone incluso).
 
 | Task | Stato | PR |
 |------|-------|----|
-| A1 | in PR | #67 |
-| A2–A5, B, C | da fare | — |
+| A1 | ✅ merged | #67 |
+| A2 | in PR | #68 |
+| A3–A5, B, C | da fare | — |

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { useOptionalAuth } from '@/hooks/useAuth'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import { enqueueOperation } from '@/lib/offline-queue'
 import {
   PostWithDetails,
@@ -39,12 +41,31 @@ type UsePostsReturn = {
   refetch: () => Promise<void>
 }
 
+// Snapshot della prima pagina persistito in cache SWR. Solo pagina 1:
+// le pagine successive dello scroll infinito non vengono cacheate (al
+// remount si riparte dall'alto, come Instagram).
+type CachedFeedPage = {
+  posts: PostWithDetails[]
+  total: number
+  hasMore: boolean
+}
+
 export function usePosts(authorId?: string): UsePostsReturn {
-  const [posts, setPosts] = useState<PostWithDetails[]>([])
-  const [total, setTotal] = useState<number>(0)
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (Fase A2): il feed cached appare SUBITO (niente skeleton),
+  // la revalidation parte comunque in background a ogni mount. La chiave
+  // è scoped per viewer perché liked_by_me/bookmarked_by_me dipendono
+  // da chi guarda.
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, `posts:${authorId ?? 'feed'}`)
+  const [posts, setPosts] = useState<PostWithDetails[]>(
+    () => readCache<CachedFeedPage>(key)?.posts ?? [],
+  )
+  const [total, setTotal] = useState<number>(() => readCache<CachedFeedPage>(key)?.total ?? 0)
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
-  const [hasMore, setHasMore] = useState<boolean>(false)
+  const [hasMore, setHasMore] = useState<boolean>(
+    () => readCache<CachedFeedPage>(key)?.hasMore ?? false,
+  )
   const [page, setPage] = useState<number>(1)
 
   const buildUrl = (p: number) => {
@@ -54,7 +75,6 @@ export function usePosts(authorId?: string): UsePostsReturn {
   }
 
   const fetchPosts = useCallback(async () => {
-    setIsLoading(true)
     setError(null)
     try {
       const res = await fetch(buildUrl(1))
@@ -63,13 +83,18 @@ export function usePosts(authorId?: string): UsePostsReturn {
       setTotal(result.total)
       setHasMore(result.has_more)
       setPage(1)
+      writeCache<CachedFeedPage>(key, {
+        posts: result.data,
+        total: result.total,
+        hasMore: result.has_more,
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch posts')
     } finally {
       setIsLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorId])
+  }, [authorId, key])
 
   useEffect(() => {
     fetchPosts()

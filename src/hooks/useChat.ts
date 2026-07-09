@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { useOptionalAuth } from '@/hooks/useAuth'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import { compressImage } from '@/lib/storage'
 import {
   ChatGroupWithDetails,
@@ -26,12 +28,18 @@ type UseChatGroupsReturn = {
 }
 
 export function useChatGroups(): UseChatGroupsReturn {
-  const [groups, setGroups] = useState<ChatGroupWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (Fase A2): lista gruppi (con unread count del viewer,
+  // quindi chiave member-scoped) renderizzata subito, revalidation in
+  // background a ogni mount.
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, 'chat-groups')
+  const [groups, setGroups] = useState<ChatGroupWithDetails[]>(
+    () => readCache<ChatGroupWithDetails[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchGroups = useCallback(async () => {
-    setIsLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/chat/groups')
@@ -40,13 +48,14 @@ export function useChatGroups(): UseChatGroupsReturn {
         setError(result.error)
       } else {
         setGroups(result.data ?? [])
+        writeCache(key, result.data ?? [])
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch chat groups')
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [key])
 
   useEffect(() => {
     fetchGroups()

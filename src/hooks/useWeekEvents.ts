@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { useOptionalAuth } from '@/hooks/useAuth'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import { CalendarEventWithDetails, AttendanceStatus, ApiResponse } from '@/types/database'
 import { getWeekStart } from '@/hooks/useActivities'
 
@@ -28,13 +30,17 @@ type UseWeekEventsReturn = {
 // granularita mese, non sottoscrive event_participants ed e usato dalla
 // pagina /calendar in sola lettura sulla card del giorno.
 export function useWeekEvents(): UseWeekEventsReturn {
-  const [events, setEvents] = useState<CalendarEventWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (Fase A2), chiave per settimana come useActivities.
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, `week-events:${getWeekStart()}`)
+  const [events, setEvents] = useState<CalendarEventWithDetails[]>(
+    () => readCache<CalendarEventWithDetails[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchEvents = useCallback(async (): Promise<void> => {
     try {
-      setIsLoading(true)
       setError(null)
       const res = await fetch(`/api/events?week_start=${getWeekStart()}`)
       const data: ApiResponse<CalendarEventWithDetails[]> = await res.json()
@@ -43,12 +49,13 @@ export function useWeekEvents(): UseWeekEventsReturn {
         return
       }
       setEvents(data.data ?? [])
+      writeCache(key, data.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch events')
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [key])
 
   useEffect(() => {
     fetchEvents()
