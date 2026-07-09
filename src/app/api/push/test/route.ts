@@ -32,13 +32,24 @@ export async function POST() {
   if (auth instanceof NextResponse) return auth
 
   try {
-    const sent = await sendPushNotification(
+    const result = await sendPushNotification(
       auth.id,
       'Notifica di prova',
       'Se vedi questo messaggio, le notifiche funzionano. 🎉',
       '/feed',
     )
-    return NextResponse.json({ data: { sent }, error: null })
+    // Oltre a `sent`, il breakdown per-endpoint: da un iPhone con Eruda
+    // (o dal toast in Settings) si vede subito se Apple ha risposto 201
+    // (accettata — il problema è lato device) o 410 (subscription morta
+    // — serve riattivare il toggle).
+    return NextResponse.json({
+      data: {
+        sent: result.sent,
+        skippedReason: result.skippedReason,
+        attempts: result.attempts,
+      },
+      error: null,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Errore invio'
     console.error('[push-test] sendPushNotification threw:', err)

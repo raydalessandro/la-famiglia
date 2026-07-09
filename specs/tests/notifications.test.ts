@@ -161,7 +161,8 @@ describe('sendPushNotification', () => {
 
     const result = await sendPushNotification('m-1', 'T', 'B')
 
-    expect(result).toBe(false)
+    expect(result.sent).toBe(false)
+    expect(result.skippedReason).toBe('no_subscriptions')
     expect(mockSendNotification).not.toHaveBeenCalled()
   })
 
@@ -175,7 +176,8 @@ describe('sendPushNotification', () => {
 
     const result = await sendPushNotification('m-1', 'T', 'B')
 
-    expect(result).toBe(false)
+    expect(result.sent).toBe(false)
+    expect(result.skippedReason).toBe('push_disabled_by_pref')
     expect(mockSendNotification).not.toHaveBeenCalled()
   })
 
@@ -188,7 +190,9 @@ describe('sendPushNotification', () => {
 
     const result = await sendPushNotification('m-1', 'Titolo', 'Body', '/feed')
 
-    expect(result).toBe(true)
+    expect(result.sent).toBe(true)
+    expect(result.attempts).toHaveLength(1)
+    expect(result.attempts[0].ok).toBe(true)
     expect(mockSetVapidDetails).toHaveBeenCalled()
     expect(mockSendNotification).toHaveBeenCalledTimes(1)
 
@@ -197,10 +201,13 @@ describe('sendPushNotification', () => {
       endpoint: SUBSCRIPTION.endpoint,
       keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
     })
+    // `url` duplica `link` per compatibilita` con i service worker
+    // pre-v6 gia` installati che leggono solo `data.url`.
     expect(JSON.parse(payload)).toEqual({
       title: 'Titolo',
       body: 'Body',
       link: '/feed',
+      url: '/feed',
     })
   })
 
@@ -224,7 +231,8 @@ describe('sendPushNotification', () => {
 
     const result = await sendPushNotification('m-1', 'T', 'B')
 
-    expect(result).toBe(false)
+    expect(result.sent).toBe(false)
+    expect(result.attempts[0]).toMatchObject({ ok: false, statusCode: 410, cleanedUp: true })
     expect(deleteCalls).toHaveLength(1)
     expect(deleteCalls[0].table).toBe('push_subscriptions')
     expect(deleteCalls[0].eqs).toEqual([
@@ -253,7 +261,7 @@ describe('sendPushNotification', () => {
 
     const result = await sendPushNotification('m-1', 'T', 'B')
 
-    expect(result).toBe(true)
+    expect(result.sent).toBe(true)
     expect(deleteCalls).toHaveLength(1) // solo la sub morta è stata pulita
   })
 
@@ -299,7 +307,8 @@ describe('sendPushNotification', () => {
 
     const result = await sendPushNotification('m-1', 'T', 'B')
 
-    expect(result).toBe(true)
+    expect(result.sent).toBe(true)
+    expect(result.attempts).toHaveLength(2)
     expect(mockSendNotification).toHaveBeenCalledTimes(2)
     expect(deleteCalls).toHaveLength(1) // solo la prima morta
   })

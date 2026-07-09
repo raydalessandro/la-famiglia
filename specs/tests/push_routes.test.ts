@@ -218,7 +218,11 @@ describe('POST /api/push/test', () => {
   })
 
   it('200 + sent:true quando la push parte', async () => {
-    mockSendPushNotification.mockResolvedValueOnce(true)
+    mockSendPushNotification.mockResolvedValueOnce({
+      sent: true,
+      skippedReason: null,
+      attempts: [{ endpointHost: 'web.push.apple.com', createdAt: null, ok: true, statusCode: 201, cleanedUp: false, error: null }],
+    })
 
     const { POST } = await import('@/app/api/push/test/route')
     const res = await POST()
@@ -231,18 +235,20 @@ describe('POST /api/push/test', () => {
       expect.any(String),
     )
     const json = await res.json()
-    expect(json.data).toEqual({ sent: true })
+    expect(json.data.sent).toBe(true)
+    expect(json.data.attempts).toHaveLength(1)
   })
 
   it('200 + sent:false quando il member non ha subscription o notify_push=false', async () => {
-    mockSendPushNotification.mockResolvedValueOnce(false)
+    mockSendPushNotification.mockResolvedValueOnce({ sent: false, skippedReason: 'no_subscriptions', attempts: [] })
 
     const { POST } = await import('@/app/api/push/test/route')
     const res = await POST()
 
     expect(res.status).toBe(200)
     const json = await res.json()
-    expect(json.data).toEqual({ sent: false })
+    expect(json.data.sent).toBe(false)
+    expect(json.data.skippedReason).toBe('no_subscriptions')
   })
 
   it('500 se sendPushNotification lancia (VAPID rotte, web-push errore)', async () => {

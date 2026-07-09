@@ -83,6 +83,27 @@ mandartelo. Risparmia ore di tentativi alla cieca.
 L'app è in produzione su Vercel. Funziona su iOS Safari, Android Chrome,
 Samsung Internet e desktop. Testata sui device della famiglia.
 
+**Fix iPhone 2026-07-09** (branch `claude/iphone-notifications-photo-upload-22b74y`):
+- **Foto (root cause)**: `compressImage` chiedeva `image/webp` al canvas;
+  Safari/iOS non sa encodare webp e per spec HTML NON ritorna null —
+  ripiega in silenzio su PNG. Risultato: PNG fotografici da 4-8MB
+  etichettati `.webp`, sopra il limite body Vercel (4.5MB) → upload
+  fallito solo su iPhone (feed, chat, avatar). Ora il fallback JPEG
+  scatta sul `blob.type` reale, e c'è una rete di sicurezza che
+  ricomprime a quality decrescente finché il file sta sotto 4MB.
+- **Push**: (a) il SW ora gestisce `pushsubscriptionchange` (iOS ruota le
+  subscription → prima l'endpoint moriva in silenzio); (b) auto-heal
+  della subscription a ogni apertura app nel layout, non solo in
+  Settings; (c) il payload push porta sia `link` che `url` — i SW pre-v6
+  leggevano solo `url`, per questo i tap aprivano sempre /feed;
+  (d) `sendPushNotification` ritorna l'esito per-endpoint e
+  `/api/push/test` lo espone: da Settings → "Invia notifica di prova"
+  si vede se Apple ha risposto 201 o 410 (console/Eruda + toast mirato).
+- **Post API**: se l'utente allega foto e NESSUNA viene caricata (e non
+  c'è testo/sondaggio), il post viene eliminato e torna un errore chiaro
+  invece di pubblicare un post mutilato senza foto.
+- SW cache bumpata a `la-famiglia-v6`.
+
 **Fasi chiuse:**
 - **Fase 1** — design tokens, primitives (Button/Toast/Skeleton/EmptyState).
 - **Fase 2** — colour-per-member (Cozi pattern), chat WhatsApp.

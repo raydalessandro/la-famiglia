@@ -86,13 +86,38 @@ function pushLog(level: 'info' | 'warn' | 'error', message: string, fields: Reco
   else console.log(JSON.stringify(entry))
 }
 
-// Send a web-push notification to all active subscriptions for a member
+/**
+ * Esito per-endpoint di un invio push. Usato dal test endpoint
+ * (/api/push/test) per mostrare all'utente ESATTAMENTE cosa ha risposto
+ * il push service di ogni suo device — indispensabile per il debug
+ * iPhone dove i log Vercel (retention 1h su Hobby) non bastano.
+ */
+export type PushSendAttempt = {
+  endpointHost: string
+  createdAt: string | null
+  ok: boolean
+  statusCode: number | null
+  cleanedUp: boolean
+  error: string | null
+}
+
+export type PushSendResult = {
+  /** true se almeno una push è stata accettata dal push service. */
+  sent: boolean
+  /** Motivo sintetico quando sent=false senza nemmeno un tentativo. */
+  skippedReason: 'no_subscriptions' | 'push_disabled_by_pref' | 'vapid_missing' | 'fetch_failed' | null
+  attempts: PushSendAttempt[]
+}
+
+// Send a web-push notification to all active subscriptions for a member.
+// Ritorna l'esito dettagliato per-endpoint; i chiamanti che vogliono solo
+// il boolean usano `.sent`.
 export async function sendPushNotification(
   memberId: string,
   title: string,
   body: string,
   link?: string
-): Promise<boolean> {
+): Promise<PushSendResult> {
   const supabase = createServerClient()
 
   // Fetch push subscriptions for this member
@@ -103,7 +128,7 @@ export async function sendPushNotification(
 
   if (subError) {
     pushLog('error', 'fetch_subscriptions_failed', { memberId, error: subError.message })
-    return false
+    return { sent: false, skippedReason: 'fetch_failed', attempts: [] }
   }
 
   const subCount = subscriptions?.length ?? 0
@@ -112,7 +137,7 @@ export async function sendPushNotification(
     // nel DB è uno stato comune (cleanup 410 dopo reinstall PWA) ma
     // silenzioso. Logghiamo INFO così è visibile nei log Vercel.
     pushLog('info', 'no_subscriptions_for_member', { memberId })
-    return false
+    return { sent: false, skippedReason: 'no_subscriptions', attempts: [] }
   }
 
   // Check member's push notification preference
@@ -124,12 +149,12 @@ export async function sendPushNotification(
 
   if (memberError || !member) {
     pushLog('error', 'fetch_member_failed', { memberId, error: memberError?.message })
-    return false
+    return { sent: false, skippedReason: 'fetch_failed', attempts: [] }
   }
 
   if (!member.notify_push) {
     pushLog('info', 'push_disabled_by_pref', { memberId })
-    return false
+    return { sent: false, skippedReason: 'push_disabled_by_pref', attempts: [] }
   }
 
   // Lazy-read delle VAPID keys. Se mancano dall'env, `readVapidConfig`
@@ -138,13 +163,18 @@ export async function sendPushNotification(
   // subscription per altri member sotto `notifyMembers` non vengono
   // tentate (tanto fallirebbero allo stesso modo).
   const vapid = readVapidConfig()
-  if (!vapid) return false
+  if (!vapid) return { sent: false, skippedReason: 'vapid_missing', attempts: [] }
 
   webpush.setVapidDetails(VAPID_EMAIL, vapid.publicKey, vapid.privateKey)
 
-  const payload = JSON.stringify({ title, body, link })
+  // `link` è il nome storico del campo; il SW attualmente installato sui
+  // device legge `url`. Mandiamo ENTRAMBI così i deep-link funzionano sia
+  // con i SW vecchi (pre-v6) sia con quelli nuovi, senza aspettare che
+  // ogni PWA installata si aggiorni.
+  const payload = JSON.stringify({ title, body, link, url: link })
   let sentCount = 0
   let cleanedUp = 0
+  const attempts: PushSendAttempt[] = []
 
   for (const sub of subscriptions as PushSubscription[]) {
     const pushSub = {
@@ -154,17 +184,26 @@ export async function sendPushNotification(
         auth: sub.keys_auth,
       },
     }
+    // Endpoint truncato per non riempire i log con FCM URL completi.
+    const endpointHost = (() => {
+      try { return new URL(sub.endpoint).host } catch { return 'unknown' }
+    })()
 
     try {
       await webpush.sendNotification(pushSub, payload)
       sentCount++
+      attempts.push({
+        endpointHost,
+        createdAt: sub.created_at ?? null,
+        ok: true,
+        statusCode: 201,
+        cleanedUp: false,
+        error: null,
+      })
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number }).statusCode
-      // Endpoint truncato per non riempire i log con FCM URL completi.
-      const endpointHost = (() => {
-        try { return new URL(sub.endpoint).host } catch { return 'unknown' }
-      })()
-      if (statusCode === 410 || statusCode === 404) {
+      const isGone = statusCode === 410 || statusCode === 404
+      if (isGone) {
         // Subscription is no longer valid — remove it
         await supabase
           .from('push_subscriptions')
@@ -186,6 +225,14 @@ export async function sendPushNotification(
           error: err instanceof Error ? err.message : String(err),
         })
       }
+      attempts.push({
+        endpointHost,
+        createdAt: sub.created_at ?? null,
+        ok: false,
+        statusCode: statusCode ?? null,
+        cleanedUp: isGone,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
@@ -196,11 +243,9 @@ export async function sendPushNotification(
     cleanedUp,
   })
 
-  // Ritorna true solo se almeno una push è effettivamente partita. Prima
-  // ritornava true sempre — questo significava che `sent_push` veniva
-  // marcato true anche se TUTTE le subscription erano fallite con 410.
-  // Comportamento più onesto: sent_push riflette "almeno una è andata".
-  return sentCount > 0
+  // sent=true solo se almeno una push è effettivamente partita, così
+  // `sent_push` sulla riga notifications riflette "almeno una è andata".
+  return { sent: sentCount > 0, skippedReason: null, attempts }
 }
 
 // Send a Telegram message to a member via the Telegram Bot API
@@ -268,7 +313,7 @@ export async function notifyMembers(
       const record = await createNotificationRecord(memberId, type, title, body, link)
 
       // Send push notification and update record if sent
-      const pushSent = await sendPushNotification(memberId, title, body, link)
+      const pushSent = (await sendPushNotification(memberId, title, body, link)).sent
       if (pushSent) {
         await supabase
           .from('notifications')
