@@ -108,6 +108,11 @@ logout.
 
 ## Fase B — Robustezza
 
+### B0 — CI su GitHub Actions ✅
+`.github/workflows/ci.yml`: lint + unit test + build su ogni PR verso
+main e su ogni push a main. Da ora la regola "niente in produzione
+senza test" è imposta dalla piattaforma, non dalla disciplina.
+
 ### B1 — Authorization test coverage (dal security audit 2026-05-11)
 7 file elencati in HANDOFF § "Security audit follow-up":
 chat_groups, chat_messages, posts (DELETE author/admin), post_comments,
@@ -148,5 +153,6 @@ dopo controllo su device reale (iPhone incluso).
 | A2 | ✅ merged | #68 |
 | A3 | ✅ merged (migration 016 applicata al DB) | #69 |
 | A4 | ✅ merged | #70 |
-| A5 | in PR | #71 |
-| B, C | da fare | — |
+| A5 | ✅ merged | #71 |
+| B0 (CI) | in PR | #72 |
+| B1–B3, C | da fare | — |
