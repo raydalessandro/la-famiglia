@@ -141,6 +141,9 @@ export type PostImage = {
   id: string
   post_id: string
   image_url: string
+  /** Versione ridotta (~480px) per il feed. NULL sui post pre-migration
+   * 016: il client fa fallback su image_url. */
+  thumb_url: string | null
   sort_order: number
   created_at: string
 }
@@ -467,6 +470,9 @@ export type CreatePostInput = {
   text: string
   post_type?: 'normal' | 'recipe' | 'story'
   images?: File[]
+  /** Thumbnail parallele a `images` (stesso indice), generate client-side
+   * all'upload (~480px). Opzionali: senza, il feed usa l'originale. */
+  thumbs?: File[]
   poll?: CreatePollInput
 }
 

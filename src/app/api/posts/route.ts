@@ -91,6 +91,11 @@ export async function POST(req: NextRequest) {
   const text = (formData.get('text') as string | null)?.trim() ?? ''
   const post_type = (formData.get('post_type') as string | null) ?? 'normal'
   const imageFiles = (formData.getAll('images') as File[]).filter((f) => f && f.size > 0)
+  // Thumbnail parallele alle immagini (stesso indice). Il client le
+  // genera all'upload (~480px, vedi Affinamento A3); opzionali — un
+  // client vecchio che non le manda produce post senza thumb, e il feed
+  // fa fallback su image_url.
+  const thumbFiles = formData.getAll('thumbs') as File[]
   const pollRaw = formData.get('poll') as string | null
 
   // Almeno uno tra testo / foto / sondaggio deve essere presente: la
@@ -149,9 +154,23 @@ export async function POST(req: NextRequest) {
 
       try {
         const imageUrl = await uploadImage('posts', file, `${post.id}/${i}`)
+
+        // Thumb best-effort: se manca o il suo upload fallisce, il post
+        // resta valido con la sola image_url (fallback lato client).
+        let thumbUrl: string | null = null
+        const thumb = thumbFiles[i]
+        if (thumb instanceof File && thumb.size > 0) {
+          try {
+            thumbUrl = await uploadImage('posts', thumb, `${post.id}/${i}_thumb`)
+          } catch (err: unknown) {
+            console.error(`Error uploading thumb ${i} for post ${post.id}:`, err)
+          }
+        }
+
         await db.from('post_images').insert({
           post_id: post.id,
           image_url: imageUrl,
+          thumb_url: thumbUrl,
           sort_order: i,
         })
         uploaded++

@@ -151,6 +151,8 @@ export function usePosts(authorId?: string): UsePostsReturn {
       formData.append('text', input.text)
       if (input.post_type) formData.append('post_type', input.post_type)
       input.images?.forEach((img) => formData.append('images', img))
+      // Thumbnail parallele alle immagini (stesso indice) — vedi A3.
+      input.thumbs?.forEach((t) => formData.append('thumbs', t))
       if (input.poll) formData.append('poll', JSON.stringify(input.poll))
       const res = await fetch('/api/posts', { method: 'POST', body: formData })
       return res.ok
