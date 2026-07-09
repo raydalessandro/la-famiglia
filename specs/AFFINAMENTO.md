@@ -147,5 +147,6 @@ dopo controllo su device reale (iPhone incluso).
 | A1 | ✅ merged | #67 |
 | A2 | ✅ merged | #68 |
 | A3 | ✅ merged (migration 016 applicata al DB) | #69 |
-| A4 | in PR | #70 |
-| A5, B, C | da fare | — |
+| A4 | ✅ merged | #70 |
+| A5 | in PR | #71 |
+| B, C | da fare | — |
