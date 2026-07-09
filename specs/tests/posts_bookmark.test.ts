@@ -27,12 +27,14 @@ vi.mock('@/lib/auth', () => ({
   requireAuth: mockRequireAuth,
 }))
 
-// buildPostWithDetails è già coperto altrove; qui ci basta che venga
-// chiamato con la post row corretta e restituisca un oggetto
-// minimamente plausibile.
+// buildPostsWithDetails è già coperto altrove (posts_batching.test.ts);
+// qui ci basta che venga chiamato con le post row corrette e restituisca
+// un array minimamente plausibile.
 const mockBuildPostWithDetails = vi.fn()
+const mockBuildPostsWithDetails = vi.fn()
 vi.mock('@/lib/posts', () => ({
   buildPostWithDetails: mockBuildPostWithDetails,
+  buildPostsWithDetails: mockBuildPostsWithDetails,
 }))
 
 const mockFrom = vi.fn()
@@ -242,7 +244,7 @@ describe('GET /api/posts/bookmarked', () => {
       throw new Error(`Unexpected table ${table}`)
     })
 
-    mockBuildPostWithDetails.mockResolvedValue({ ...fakePost, bookmarked_by_me: true })
+    mockBuildPostsWithDetails.mockResolvedValue([{ ...fakePost, bookmarked_by_me: true }])
 
     const { GET } = await import('@/app/api/posts/bookmarked/route')
     const res = await GET(makeRequest('GET', 'http://localhost/api/posts/bookmarked?page=1&per_page=10') as never)
@@ -278,12 +280,17 @@ describe('GET /api/posts/bookmarked', () => {
       },
     }))
 
+    mockBuildPostsWithDetails.mockResolvedValue([])
+
     const { GET } = await import('@/app/api/posts/bookmarked/route')
     const res = await GET(makeRequest('GET', 'http://localhost/api/posts/bookmarked') as never)
     const json = await res.json()
 
     expect(res.status).toBe(200)
     expect(json.data).toEqual([])
-    expect(mockBuildPostWithDetails).not.toHaveBeenCalled()
+    // La batch viene chiamata con array vuoto (o non chiamata affatto):
+    // in entrambi i casi la response non contiene post orfani.
+    const batchedRows = mockBuildPostsWithDetails.mock.calls.flatMap((c) => c[0] as unknown[])
+    expect(batchedRows).toEqual([])
   })
 })

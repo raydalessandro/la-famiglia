@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
-import { buildPostWithDetails } from '@/lib/posts'
+import { buildPostWithDetails, buildPostsWithDetails } from '@/lib/posts'
 
 /**
  * GET /api/posts/bookmarked?page=1&per_page=10 → PaginatedResponse<PostWithDetails>
@@ -68,9 +68,9 @@ export async function GET(req: NextRequest) {
     .map((row) => row.posts as unknown as Parameters<typeof buildPostWithDetails>[0] | null)
     .filter((p): p is Parameters<typeof buildPostWithDetails>[0] => p !== null)
 
-  const postsWithDetails = await Promise.all(
-    posts.map((post) => buildPostWithDetails(post, member)),
-  )
+  // Batch: numero di query costante per l'intera pagina (vedi
+  // buildPostsWithDetails in lib/posts.ts).
+  const postsWithDetails = await buildPostsWithDetails(posts, member)
 
   return NextResponse.json({
     data: postsWithDetails,
