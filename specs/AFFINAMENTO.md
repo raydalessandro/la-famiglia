@@ -1,0 +1,140 @@
+# Piano di affinamento — La Famiglia
+
+> Creato 2026-07-09 dall'analisi completa del codebase. Obiettivo:
+> portare l'app da "funziona" a "sembra Instagram" — velocità percepita,
+> robustezza, polish. Ogni task = branch + PR + test. Niente merge senza
+> verifica su preview. Aggiorna lo stato qui quando chiudi un task.
+
+## Diagnosi (perché è lenta)
+
+Misurato/verificato sul codice il 2026-07-09:
+
+1. **`GET /api/posts` fa ~72 query per caricamento** — `buildPostWithDetails`
+   esegue 7 query per OGNI post (author, images, likes, comments count,
+   reactions, poll, bookmark) × 10 post + count + data. Ogni round-trip
+   Vercel↔Supabase costa; il feed impiega centinaia di ms lato server.
+2. **Zero cache client** — ogni mount di pagina mostra skeleton e rifà
+   il fetch da zero. Navigare feed → chat → feed ricarica tutto.
+   `useMembers` viene rifetchato da ogni pagina che lo usa.
+3. **AuthProvider blocca il primo render** — spinner globale finché
+   `GET /api/auth` non risponde, POI parte il fetch dei dati della
+   pagina. Due round-trip seriali prima di vedere contenuto.
+4. **Realtime = full refetch** — ogni INSERT/UPDATE su posts/reactions/
+   votes → `fetchPosts()` completo che RESETTA a pagina 1 (se avevi
+   scrollato 5 pagine, il feed collassa a 10 post). `votePoll` fa
+   refetch completo sia su successo che su errore.
+5. **Il feed scarica le foto originali** — 1920px (~200KB–1MB l'una)
+   anche per i thumbnail da 160px di altezza. 10 post × 4 foto = molti
+   MB su mobile.
+
+## Fase A — Velocità (priorità massima)
+
+### A1 — Feed API: batching delle query ✅ scelto come primo task
+**File**: `src/lib/posts.ts`, `src/app/api/posts/route.ts`
+**Cosa**: nuova `buildPostsWithDetails(posts[], member)` che fa UNA query
+per tabella con `.in('post_id', ids)`:
+- `members` per gli author (`.in('id', authorIds)`)
+- `post_images` (`.in('post_id', ids)`, order sort_order)
+- `post_likes` (`.in('post_id', ids)`)
+- `post_comments` count → una query `select post_id` + groupBy in JS
+  (PostgREST non fa GROUP BY: contare in JS su select leggero)
+- `post_reactions` con join members (`.in('post_id', ids)`)
+- `post_polls` con options+votes (`.in('post_id', ids)`)
+- `post_bookmarks` del solo viewer (`.in('post_id', ids).eq('member_id', me)`)
+Poi assembla in memoria. `buildPostWithDetails` (singolo) resta come
+wrapper che chiama la batch con array di 1.
+**Target**: da ~72 a ~9 query per pagina di feed.
+**Test**: aggiornare/estendere i test esistenti dei route posts; nuovo
+test che verifica l'assemblaggio (likes/reazioni/poll attribuiti al post
+giusto, liked_by_me/bookmarked_by_me corretti).
+**Rischio**: shape della response INVARIATA (PostWithDetails identico) —
+nessun cambio client.
+
+### A2 — Cache client stale-while-revalidate
+**File**: nuovo `src/lib/swr-cache.ts` + hook `useCachedFetch`, poi
+adozione in `usePosts`, `useMembers`, `useChatGroups`, `useActivities`.
+**Cosa**: store module-level (Map) + persistenza `sessionStorage`.
+Al mount: se c'è cache → render IMMEDIATO dei dati cached (niente
+skeleton), fetch in background, aggiorna se cambiato. TTL breve (30–60s)
+solo per evitare refetch burst; la revalidation è sempre-on.
+**Regola UX**: skeleton SOLO al primissimo accesso (cache vuota).
+**Test**: unit sullo store (get/set/expire/revalidate), test hook con
+fetch mockato (render da cache + update dopo revalidate).
+
+### A3 — Immagini a due taglie (thumb + full)
+**File**: `src/lib/storage.ts`, `src/app/api/posts/route.ts`,
+`src/components/feed/PostCard.tsx`, migration `016_post_images_thumb.sql`
+**Cosa**: all'upload il client genera DUE versioni (riusa compressImage:
+thumb maxWidth 480 q0.7, full 1920 q0.8) e le manda entrambe nel
+FormData (`images` + `thumbs` paralleli). Il server salva `{post_id}/{i}`
+e `{post_id}/{i}_thumb`, colonna `thumb_url` su `post_images`
+(nullable — i post vecchi non ce l'hanno).
+**Client**: PostCard usa `thumb_url ?? image_url` nel feed; lightbox
+usa sempre `image_url`.
+**Test**: upload route (due file salvati, thumb_url popolato), PostCard
+render (thumb nel feed, full nel lightbox), fallback per post legacy.
+
+### A4 — Realtime chirurgico (niente full refetch)
+**File**: `src/hooks/usePosts.ts`
+**Cosa**: i canali realtime applicano patch incrementali allo state:
+- `posts` INSERT → fetch del SOLO post nuovo (`GET /api/posts/[id]`) e
+  prepend; DELETE → rimozione locale; UPDATE → fetch singolo e replace.
+- `post_reactions` INSERT/DELETE → patch della lista reactions del post
+  interessato (il payload realtime ha post_id e member_id).
+- `post_poll_votes` → refetch del solo post interessato.
+La pagination NON si resetta mai. `votePoll`/`retractPollVote` →
+aggiornamento ottimistico + fetch singolo post, non fetchPosts.
+**Test**: usePosts con eventi realtime simulati (prepend, patch,
+pagination preservata).
+
+### A5 — Auth istantanea
+**File**: `src/hooks/useAuth.tsx`
+**Cosa**: cache di `member` in `localStorage` (solo campi public).
+Al mount: se presente → `isLoading=false` subito con il member cached,
+`GET /api/auth` in background conferma/aggiorna/invalida (401 → logout
+UI). Rimuove lo spinner globale a ogni apertura.
+**Attenzione**: al logout pulire la cache. 401 dalla revalidation →
+redirect login.
+**Test**: render immediato da cache, invalidazione su 401, pulizia su
+logout.
+
+## Fase B — Robustezza
+
+### B1 — Authorization test coverage (dal security audit 2026-05-11)
+7 file elencati in HANDOFF § "Security audit follow-up":
+chat_groups, chat_messages, posts (DELETE author/admin), post_comments,
+post_like, notifications (self-scoping), members (self vs admin).
+Nessun cambio di codice previsto — solo copertura; se un test scopre un
+buco, fix nella stessa PR.
+
+### B2 — Cleanup punti aperti audit Fase 1/2
+- `post_likes` vs `post_reactions`: chiarire se legacy → migrare o
+  documentare.
+- `_postId` unused in ReactionBar.
+- `member as MemberPublic` cast in feed/page.tsx → tipare `useAuth`.
+- Test cleanup `rls_defensive.test.ts` → `afterAll()`.
+
+### B3 — E2E smoke con member seedato
+Login → feed → crea post → like → chat → invia messaggio. Playwright
+già configurato, manca il seed. Gate in CI.
+
+## Fase C — UX / Design polish
+
+- C1: pull-to-refresh (HANDOFF 6.8) su feed/chat/attività.
+- C2: long-press reactions Messenger-style (6.7).
+- C3: composer migliorato (6.10) + blur-up placeholder foto.
+- C4: transizioni di pagina (View Transitions API dove supportata),
+  press-state sui bottoni, haptics-like feedback.
+
+## Ordine consigliato
+
+A1 → A2 → A3 (il grosso della velocità percepita) → A4 → A5 →
+B1 → B2 → C. Ogni task una PR; preview Vercel per verifica; merge solo
+dopo controllo su device reale (iPhone incluso).
+
+## Stato
+
+| Task | Stato | PR |
+|------|-------|----|
+| A1 | in PR | #67 |
+| A2–A5, B, C | da fare | — |

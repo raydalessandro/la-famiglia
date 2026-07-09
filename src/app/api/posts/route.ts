@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/client'
 import { uploadImage } from '@/lib/storage'
-import { buildPostWithDetails } from '@/lib/posts'
+import { buildPostWithDetails, buildPostsWithDetails } from '@/lib/posts'
 import { emit } from '@/lib/notification-events'
 import { parseMentions, insertMentions } from '@/lib/mentions'
 import type { CreatePollInput, Member } from '@/types/database'
@@ -56,9 +56,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: [], total: 0, page, per_page, has_more: false, error: dataError.message }, { status: 500 })
   }
 
-  const postsWithDetails = await Promise.all(
-    (posts ?? []).map((post) => buildPostWithDetails(post, member))
-  )
+  // Batch: ~7 query totali per l'intera pagina invece di 7 per post
+  // (era la causa principale della lentezza del feed).
+  const postsWithDetails = await buildPostsWithDetails(posts ?? [], member)
 
   return NextResponse.json({
     data: postsWithDetails,
