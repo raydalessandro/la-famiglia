@@ -51,31 +51,49 @@ export async function GET(req: NextRequest) {
   // `participants` resta in payload per back-compat (sola lista membri).
   // `attendances` e` la nuova vista completa con stato di risposta, consumata
   // dalla pagina Attivita` unificata che mostra confermati/saltati/modificati.
-  const enriched = await Promise.all(
-    (events ?? []).map(async (event) => {
-      const { data: rows } = await db
-        .from('event_participants')
-        .select('id, event_id, member_id, status, modified_notes, created_at, updated_at, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
-        .eq('event_id', event.id)
+  // Batch anti-N+1 (Affinamento A6.2): prima 1 query PER evento — il
+  // calendario mensile ne ha 20-40. Ora UNA query con .in() e groupBy
+  // in memoria, come gia` fa activities/route.ts.
+  const eventIds = (events ?? []).map((e) => e.id)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let participantRows: any[] = []
+  if (eventIds.length > 0) {
+    const { data: rows, error: participantsError } = await db
+      .from('event_participants')
+      .select('id, event_id, member_id, status, modified_notes, created_at, updated_at, members(id, name, avatar_emoji, avatar_url, family_role, bio, is_admin, is_active, color)')
+      .in('event_id', eventIds)
+    if (participantsError) {
+      return NextResponse.json({ data: null, error: participantsError.message }, { status: 500 })
+    }
+    participantRows = rows ?? []
+  }
 
-      const list = rows ?? []
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const participants = list.map((r: any) => r.members).filter(Boolean)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const attendances = list.map((r: any) => ({
-        id: r.id,
-        event_id: r.event_id,
-        member_id: r.member_id,
-        status: r.status,
-        modified_notes: r.modified_notes,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        member: r.members,
-      }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rowsByEvent = new Map<string, any[]>()
+  for (const r of participantRows) {
+    const list = rowsByEvent.get(r.event_id)
+    if (list) list.push(r)
+    else rowsByEvent.set(r.event_id, [r])
+  }
 
-      return { ...event, participants, attendances }
-    })
-  )
+  const enriched = (events ?? []).map((event) => {
+    const list = rowsByEvent.get(event.id) ?? []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const participants = list.map((r: any) => r.members).filter(Boolean)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const attendances = list.map((r: any) => ({
+      id: r.id,
+      event_id: r.event_id,
+      member_id: r.member_id,
+      status: r.status,
+      modified_notes: r.modified_notes,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      member: r.members,
+    }))
+
+    return { ...event, participants, attendances }
+  })
 
   void member
   return NextResponse.json({ data: enriched, error: null })
