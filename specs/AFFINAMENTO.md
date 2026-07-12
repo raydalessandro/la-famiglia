@@ -191,6 +191,7 @@ dopo controllo su device reale (iPhone incluso).
 | A5 | ✅ merged | #71 |
 | B0 (CI) | ✅ merged | #72 |
 | B1 | ✅ merged | #73 |
-| A6.1 (chat groups) | in PR (RPC 017 applicata al DB) | #74 |
+| A6.1 (chat groups) | ✅ merged (RPC 017 applicata al DB) | #74 |
+| A6.2 (events) | in PR | #75 |
 | A6 | audit fatto, sotto-task A6.1–A6.5 da fare | — |
 | B2–B3, C | da fare | — |
