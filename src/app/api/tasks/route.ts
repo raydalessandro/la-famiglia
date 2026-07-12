@@ -43,22 +43,58 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: null, error: error.message }, { status: 500 })
   }
 
-  const enriched = await Promise.all(
-    (tasks ?? []).map(async (task) => {
-      const [{ data: assignees }, { data: creator }] = await Promise.all([
-        db
-          .from('task_assignees')
-          .select('member_id, members(id, name, avatar_emoji, color)')
-          .eq('task_id', task.id),
-        db
-          .from('members')
-          .select('id, name, avatar_emoji, color')
-          .eq('id', task.created_by)
-          .single(),
-      ])
-      return { ...task, assignees: assignees ?? [], creator: creator ?? null }
-    })
+  // Batch anti-N+1 (Affinamento A6.3): prima 2 query PER task (assignees
+  // + lookup singola del creator). Ora due query costanti: assignees di
+  // tutti i task con .in() e UNA lookup dei creator deduplicati.
+  const allTaskIds = (tasks ?? []).map((t) => t.id)
+  const creatorIds = Array.from(
+    new Set((tasks ?? []).map((t) => t.created_by).filter((id): id is string => !!id)),
   )
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let assigneeRows: any[] = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let creatorRows: any[] = []
+  if (allTaskIds.length > 0) {
+    const [assigneesRes, creatorsRes] = await Promise.all([
+      db
+        .from('task_assignees')
+        .select('task_id, member_id, members(id, name, avatar_emoji, color)')
+        .in('task_id', allTaskIds),
+      creatorIds.length > 0
+        ? db.from('members').select('id, name, avatar_emoji, color').in('id', creatorIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
+    if (assigneesRes.error) {
+      return NextResponse.json({ data: null, error: assigneesRes.error.message }, { status: 500 })
+    }
+    if (creatorsRes.error) {
+      return NextResponse.json({ data: null, error: creatorsRes.error.message }, { status: 500 })
+    }
+    assigneeRows = assigneesRes.data ?? []
+    creatorRows = creatorsRes.data ?? []
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const assigneesByTask = new Map<string, any[]>()
+  for (const row of assigneeRows) {
+    // Shape identica al vecchio per-task: righe {member_id, members} —
+    // task_id serve solo al grouping, lo togliamo dal payload.
+    const { task_id, ...rest } = row
+    const list = assigneesByTask.get(task_id)
+    if (list) list.push(rest)
+    else assigneesByTask.set(task_id, [rest])
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const creatorsById = new Map<string, any>()
+  for (const c of creatorRows) creatorsById.set(c.id, c)
+
+  const enriched = (tasks ?? []).map((task) => ({
+    ...task,
+    assignees: assigneesByTask.get(task.id) ?? [],
+    creator: (task.created_by && creatorsById.get(task.created_by)) || null,
+  }))
 
   return NextResponse.json({ data: enriched, error: null })
 }
