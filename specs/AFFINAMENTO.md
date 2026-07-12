@@ -109,14 +109,37 @@ logout.
 ### A6 — Estendere la velocità alle altre tab (richiesto 2026-07-09)
 Feedback utente dopo la Fase A: "ottima la velocità sul feed, stessa
 cosa su attività, chat, commenti e tutte le altre tab".
-Stato attuale: le LISTE (gruppi chat, attività, eventi settimana,
-membri) hanno già la cache SWR da A2. Mancano:
-- **messaggi chat** (`useChat` per gruppo): nessuna cache → aprire una
-  chat mostra sempre il loading. Cache SWR per gruppo (pagina 1).
-- **pagina post singolo /feed/[id] + commenti**: nessuna cache.
-- **server-side**: audit N+1 sulle altre route in corso (chat groups
-  unread/last-message, activities participants/attendances, events,
-  comments GET) — risultati e sotto-task da riportare qui.
+
+Audit completato (2026-07-09). Sotto-task in ordine di impatto:
+
+**A6.1 — server: GET /api/chat/groups** (~4 query PER gruppo: roster,
+last message, read status, unread count → con 8 gruppi ~34 round-trip;
+la tab più aperta dell'app). Batch: roster e read status con
+`.in('group_id', ids)`; last-message + unread via query unica sui
+messaggi dei gruppi con calcolo in JS (scala famiglia) — valutare RPC
+`DISTINCT ON` + `COUNT FILTER` se il volume cresce.
+
+**A6.2 — server: GET /api/events** (1 query per evento su
+event_participants; il calendario mensile ne ha 20-40). Batch banale
+`.in('event_id', ids)` — modello già in repo in activities/route.ts.
+
+**A6.3 — server: GET /api/tasks** (2 query per task: assignees +
+creator singolo). Batch assignees `.in('task_id', ids)` + una sola
+lookup dei creator deduplicati.
+
+**A6.4 — server: GET /api/albums** (1 count query per album). Una
+`select('album_id').in(...)` + conteggio in JS, come comments_count
+in buildPostsWithDetails.
+
+**A6.5 — client: cache SWR sui rimanenti**: `useChat` messaggi (per
+gruppo — aprire una chat parte sempre da skeleton), pagina
+`/feed/[id]` (post + commenti), `useEvents`, `useTasks`, `useAlbums`,
+`useNotifications`.
+
+Già efficienti (non ritoccare): activities GET (batchato, modello di
+riferimento), posts GET/bookmarked, comments GET (join embedded),
+chat messages GET (join + batch parents), notifications, members,
+birthdays, album photos.
 
 ## Fase B — Robustezza
 
