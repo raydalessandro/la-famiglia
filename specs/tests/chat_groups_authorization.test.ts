@@ -23,8 +23,9 @@ vi.mock('@/lib/auth', () => ({
 }))
 
 const mockFrom = vi.fn()
+const mockRpc = vi.fn()
 vi.mock('@/lib/supabase/client', () => ({
-  createServerClient: () => ({ from: mockFrom }),
+  createServerClient: () => ({ from: mockFrom, rpc: mockRpc }),
 }))
 
 // ---------------------------------------------------------------------------
@@ -119,18 +120,22 @@ describe('GET /api/chat/groups — authorization', () => {
   it('ritorna solo i gruppi in cui il caller è membro', async () => {
     mockRequireAuth.mockResolvedValueOnce(MEMBER)
 
+    // Dal batching A6.1 la route fa: membership (.eq), groups (.in),
+    // roster batch (.in) e RPC chat_group_summaries — niente più query
+    // per-gruppo su chat_messages / chat_read_status.
     mockFrom.mockImplementation((table: string) => {
       if (table === 'chat_group_members') {
         return {
           select: (cols: string) => ({
             eq: () => {
+              // membership del caller: solo group-1
               if (cols === 'group_id') {
-                // membership del caller: solo group-1
                 return Promise.resolve({ data: [{ group_id: 'group-1' }], error: null })
               }
-              // enrichment: lista membri del gruppo (join)
               return Promise.resolve({ data: [], error: null })
             },
+            // roster batch di tutti i gruppi
+            in: () => Promise.resolve({ data: [], error: null }),
           }),
         }
       }
@@ -151,30 +156,9 @@ describe('GET /api/chat/groups — authorization', () => {
           }),
         }
       }
-      if (table === 'chat_messages') {
-        return {
-          select: () => ({
-            eq: () => ({
-              order: () => ({
-                limit: () => Promise.resolve({ data: [], error: null }),
-              }),
-            }),
-          }),
-        }
-      }
-      if (table === 'chat_read_status') {
-        return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                maybeSingle: () => Promise.resolve({ data: null, error: null }),
-              }),
-            }),
-          }),
-        }
-      }
       throw new Error(`Tabella inattesa: ${table}`)
     })
+    mockRpc.mockResolvedValue({ data: [], error: null })
 
     const { GET } = await import('@/app/api/chat/groups/route')
     const res = await GET(makeRequest('GET') as never)
