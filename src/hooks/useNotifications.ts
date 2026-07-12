@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { useOptionalAuth } from '@/hooks/useAuth'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import { Notification, ApiResponse } from '@/types/database'
 
 type UseNotificationsReturn = {
@@ -15,12 +17,18 @@ type UseNotificationsReturn = {
 }
 
 export function useNotifications(): UseNotificationsReturn {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (A6.5): notifiche renderizzate subito dalla cache,
+  // revalidation sempre in background al mount (niente flash sui refetch
+  // realtime).
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, 'notifications')
+  const [notifications, setNotifications] = useState<Notification[]>(
+    () => readCache<Notification[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchNotifications = useCallback(async () => {
-    setIsLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/notifications')
@@ -29,13 +37,14 @@ export function useNotifications(): UseNotificationsReturn {
         setError(result.error)
       } else {
         setNotifications(result.data ?? [])
+        writeCache(key, result.data ?? [])
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch notifications')
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [key])
 
   useEffect(() => {
     fetchNotifications()

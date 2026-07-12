@@ -17,6 +17,7 @@ import {
 } from '@/components/ui'
 import { PostCard } from '@/components/feed/PostCard'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import {
   ApiResponse,
   MemberPublic,
@@ -93,12 +94,23 @@ export default function PostPage() {
   const { members } = useMembers()
   const toast = useToast()
 
-  const [post, setPost] = useState<PostWithDetails | null>(null)
-  const [isLoadingPost, setIsLoadingPost] = useState(true)
+  // Cache SWR (A6.5): post e commenti cached appaiono subito (niente
+  // skeleton), la revalidation parte comunque al mount.
+  const postKey = cacheKey(member?.id, `post:${postId}`)
+  const commentsKey = cacheKey(member?.id, `post-comments:${postId}`)
+
+  const [post, setPost] = useState<PostWithDetails | null>(
+    () => readCache<PostWithDetails>(postKey),
+  )
+  const [isLoadingPost, setIsLoadingPost] = useState(() => readCache(postKey) === null)
   const [notFound, setNotFound] = useState(false)
 
-  const [comments, setComments] = useState<PostCommentWithAuthor[]>([])
-  const [isLoadingComments, setIsLoadingComments] = useState(true)
+  const [comments, setComments] = useState<PostCommentWithAuthor[]>(
+    () => readCache<PostCommentWithAuthor[]>(commentsKey) ?? [],
+  )
+  const [isLoadingComments, setIsLoadingComments] = useState(
+    () => readCache(commentsKey) === null,
+  )
 
   const [draft, setDraft] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -111,25 +123,31 @@ export default function PostPage() {
         return
       }
       const json: ApiResponse<PostWithDetails> = await res.json()
-      if (json.data) setPost(json.data)
+      if (json.data) {
+        setPost(json.data)
+        writeCache(postKey, json.data)
+      }
     } catch {
       // network errors surface via the not-found state; toast feels too loud
     } finally {
       setIsLoadingPost(false)
     }
-  }, [postId])
+  }, [postId, postKey])
 
   const fetchComments = useCallback(async () => {
     try {
       const res = await fetch(`/api/posts/${postId}/comments`)
       const json: ApiResponse<PostCommentWithAuthor[]> = await res.json()
-      if (json.data) setComments(json.data)
+      if (json.data) {
+        setComments(json.data)
+        writeCache(commentsKey, json.data)
+      }
     } catch {
       // silently ignore — comments stay empty
     } finally {
       setIsLoadingComments(false)
     }
-  }, [postId])
+  }, [postId, commentsKey])
 
   useEffect(() => {
     if (!postId) return

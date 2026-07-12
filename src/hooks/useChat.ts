@@ -109,8 +109,14 @@ type UseChatReturn = {
 const DELETED_PLACEHOLDER = '[Messaggio eliminato]'
 
 export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn {
-  const [messages, setMessages] = useState<ChatMessageWithAuthor[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (A6.5): pagina 1 dei messaggi cacheata GIÀ reversata (ordine
+  // ASC, com'è nello state) → render iniziale identico, revalidation al mount.
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, `chat-msgs:${groupId}`)
+  const [messages, setMessages] = useState<ChatMessageWithAuthor[]>(
+    () => readCache<ChatMessageWithAuthor[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState<boolean>(false)
   const [page, setPage] = useState<number>(1)
@@ -119,7 +125,6 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
     `/api/chat/groups/${groupId}/messages?page=${p}&per_page=${PER_PAGE}`
 
   const fetchMessages = useCallback(async () => {
-    setIsLoading(true)
     setError(null)
     try {
       const res = await fetch(buildUrl(1))
@@ -128,7 +133,10 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
       // ASC (older on top, newer at the bottom — WhatsApp / Telegram
       // convention) so we reverse the page locally. Subsequent loadMore
       // pages get prepended after the same flip.
-      setMessages([...result.data].reverse())
+      const pageAsc = [...result.data].reverse()
+      setMessages(pageAsc)
+      // Solo pagina 1 in cache (loadMore non scrive).
+      writeCache(key, pageAsc)
       setHasMore(result.has_more)
       setPage(1)
     } catch (e) {
@@ -137,7 +145,7 @@ export function useChat(groupId: string, members: MemberPublic[]): UseChatReturn
       setIsLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId])
+  }, [groupId, key])
 
   const markAsRead = useCallback(async () => {
     try {

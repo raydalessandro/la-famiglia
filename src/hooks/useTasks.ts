@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { useOptionalAuth } from '@/hooks/useAuth'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import { TaskWithDetails, CreateTaskInput, UpdateTaskInput, ApiResponse } from '@/types/database'
 
 type UseTasksReturn = {
@@ -16,12 +18,20 @@ type UseTasksReturn = {
 }
 
 export function useTasks(filter?: { assigneeId?: string; completed?: boolean }): UseTasksReturn {
-  const [tasks, setTasks] = useState<TaskWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (A6.5): tasks renderizzati subito dalla cache (chiave che
+  // include i filtri), revalidation sempre in background al mount.
+  const auth = useOptionalAuth()
+  const key = cacheKey(
+    auth?.member?.id,
+    `tasks:${filter?.assigneeId ?? 'all'}:${filter?.completed ?? 'all'}`,
+  )
+  const [tasks, setTasks] = useState<TaskWithDetails[]>(
+    () => readCache<TaskWithDetails[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchTasks = useCallback(async () => {
-    setIsLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams()
@@ -34,6 +44,7 @@ export function useTasks(filter?: { assigneeId?: string; completed?: boolean }):
         setError(result.error)
       } else {
         setTasks(result.data ?? [])
+        writeCache(key, result.data ?? [])
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch tasks')
@@ -41,7 +52,7 @@ export function useTasks(filter?: { assigneeId?: string; completed?: boolean }):
       setIsLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter?.assigneeId, filter?.completed])
+  }, [filter?.assigneeId, filter?.completed, key])
 
   useEffect(() => {
     fetchTasks()
