@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRealtimeSubscription } from '@/lib/realtime'
+import { useOptionalAuth } from '@/hooks/useAuth'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import { CalendarEventWithDetails, CreateEventInput, UpdateEventInput, ApiResponse } from '@/types/database'
 
 type UseEventsReturn = {
@@ -15,12 +17,17 @@ type UseEventsReturn = {
 }
 
 export function useEvents(month: number, year: number): UseEventsReturn {
-  const [events, setEvents] = useState<CalendarEventWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (A6.5): eventi del mese renderizzati subito dalla cache
+  // (chiave per mese), revalidation sempre in background al mount.
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, `events:${year}-${month}`)
+  const [events, setEvents] = useState<CalendarEventWithDetails[]>(
+    () => readCache<CalendarEventWithDetails[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchEvents = useCallback(async () => {
-    setIsLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/events?month=${month}&year=${year}`)
@@ -29,13 +36,23 @@ export function useEvents(month: number, year: number): UseEventsReturn {
         setError(result.error)
       } else {
         setEvents(result.data ?? [])
+        writeCache(key, result.data ?? [])
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch events')
     } finally {
       setIsLoading(false)
     }
-  }, [month, year])
+  }, [month, year, key])
+
+  // Al cambio mese ri-seed dalla cache del nuovo mese: l'initializer di
+  // useState gira solo al mount, ma il calendario naviga tra mesi con lo
+  // stesso componente montato. Un mese già visitato appare istantaneo;
+  // la revalidation (effect sotto) parte comunque.
+  useEffect(() => {
+    const cached = readCache<CalendarEventWithDetails[]>(key)
+    if (cached) setEvents(cached)
+  }, [key])
 
   useEffect(() => {
     fetchEvents()

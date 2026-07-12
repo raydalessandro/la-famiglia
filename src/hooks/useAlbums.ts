@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useOptionalAuth } from '@/hooks/useAuth'
+import { cacheKey, readCache, writeCache } from '@/lib/swr-cache'
 import { AlbumWithDetails, AlbumPhoto, ApiResponse } from '@/types/database'
 
 // ─── useAlbums ────────────────────────────────────────────────────────────────
@@ -15,12 +17,17 @@ type UseAlbumsReturn = {
 }
 
 export function useAlbums(): UseAlbumsReturn {
-  const [albums, setAlbums] = useState<AlbumWithDetails[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (A6.5): lista album renderizzata subito dalla cache,
+  // revalidation sempre in background al mount.
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, 'albums')
+  const [albums, setAlbums] = useState<AlbumWithDetails[]>(
+    () => readCache<AlbumWithDetails[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchAlbums = useCallback(async () => {
-    setIsLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/albums')
@@ -29,13 +36,14 @@ export function useAlbums(): UseAlbumsReturn {
         setError(result.error)
       } else {
         setAlbums(result.data ?? [])
+        writeCache(key, result.data ?? [])
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch albums')
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [key])
 
   useEffect(() => {
     fetchAlbums()
@@ -88,12 +96,17 @@ type UseAlbumPhotosReturn = {
 }
 
 export function useAlbumPhotos(albumId: string): UseAlbumPhotosReturn {
-  const [photos, setPhotos] = useState<AlbumPhoto[]>([])
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  // Cache SWR (A6.5): foto dell'album renderizzate subito dalla cache,
+  // revalidation sempre in background al mount.
+  const auth = useOptionalAuth()
+  const key = cacheKey(auth?.member?.id, `album-photos:${albumId}`)
+  const [photos, setPhotos] = useState<AlbumPhoto[]>(
+    () => readCache<AlbumPhoto[]>(key) ?? [],
+  )
+  const [isLoading, setIsLoading] = useState<boolean>(() => readCache(key) === null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchPhotos = useCallback(async () => {
-    setIsLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/albums/${albumId}/photos`)
@@ -102,13 +115,14 @@ export function useAlbumPhotos(albumId: string): UseAlbumPhotosReturn {
         setError(result.error)
       } else {
         setPhotos(result.data ?? [])
+        writeCache(key, result.data ?? [])
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch photos')
     } finally {
       setIsLoading(false)
     }
-  }, [albumId])
+  }, [albumId, key])
 
   useEffect(() => {
     fetchPhotos()
