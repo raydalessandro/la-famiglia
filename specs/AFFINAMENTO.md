@@ -106,6 +106,18 @@ redirect login.
 **Test**: render immediato da cache, invalidazione su 401, pulizia su
 logout.
 
+### A6 — Estendere la velocità alle altre tab (richiesto 2026-07-09)
+Feedback utente dopo la Fase A: "ottima la velocità sul feed, stessa
+cosa su attività, chat, commenti e tutte le altre tab".
+Stato attuale: le LISTE (gruppi chat, attività, eventi settimana,
+membri) hanno già la cache SWR da A2. Mancano:
+- **messaggi chat** (`useChat` per gruppo): nessuna cache → aprire una
+  chat mostra sempre il loading. Cache SWR per gruppo (pagina 1).
+- **pagina post singolo /feed/[id] + commenti**: nessuna cache.
+- **server-side**: audit N+1 sulle altre route in corso (chat groups
+  unread/last-message, activities participants/attendances, events,
+  comments GET) — risultati e sotto-task da riportare qui.
+
 ## Fase B — Robustezza
 
 ### B0 — CI su GitHub Actions ✅
@@ -154,5 +166,7 @@ dopo controllo su device reale (iPhone incluso).
 | A3 | ✅ merged (migration 016 applicata al DB) | #69 |
 | A4 | ✅ merged | #70 |
 | A5 | ✅ merged | #71 |
-| B0 (CI) | in PR | #72 |
-| B1–B3, C | da fare | — |
+| B0 (CI) | ✅ merged | #72 |
+| B1 | in corso | — |
+| A6 | audit in corso | — |
+| B2–B3, C | da fare | — |
