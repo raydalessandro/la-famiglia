@@ -39,60 +39,58 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ data: null, error: groupsError.message }, { status: 500 })
   }
 
-  const enriched = await Promise.all(
-    (groups ?? []).map(async (group) => {
-      const [
-        { data: groupMembers },
-        { data: lastMessages },
-        { data: readStatus },
-      ] = await Promise.all([
-        db
-          .from('chat_group_members')
-          .select('member_id, members(id, name, avatar_emoji, color)')
-          .eq('group_id', group.id),
-        db
-          .from('chat_messages')
-          .select('*')
-          .eq('group_id', group.id)
-          .order('created_at', { ascending: false })
-          .limit(1),
-        db
-          .from('chat_read_status')
-          .select('last_read_at')
-          .eq('group_id', group.id)
-          .eq('member_id', member.id)
-          .maybeSingle(),
-      ])
+  // Batch anti-N+1 (Affinamento A6.1): prima erano ~4 query PER gruppo
+  // (roster, last message, read status, unread count). Ora due sole
+  // chiamate parallele qualunque sia il numero di gruppi:
+  //   1. roster di tutti i gruppi con .in()
+  //   2. RPC chat_group_summaries → last message (già tombstonato se
+  //      soft-deleted) + unread count per gruppo, calcolati in Postgres
+  //      con DISTINCT ON + COUNT FILTER (migration 017)
+  const [rosterRes, summariesRes] = await Promise.all([
+    db
+      .from('chat_group_members')
+      .select('group_id, member_id, members(id, name, avatar_emoji, color)')
+      .in('group_id', groupIds),
+    db.rpc('chat_group_summaries', {
+      p_member_id: member.id,
+      p_group_ids: groupIds,
+    }),
+  ])
 
-      const lastMessage = lastMessages?.[0] ?? null
-      const lastReadAt = readStatus?.last_read_at ?? null
+  if (rosterRes.error) {
+    return NextResponse.json({ data: null, error: rosterRes.error.message }, { status: 500 })
+  }
+  if (summariesRes.error) {
+    return NextResponse.json({ data: null, error: summariesRes.error.message }, { status: 500 })
+  }
 
-      let unreadCount = 0
-      if (lastReadAt) {
-        const { count } = await db
-          .from('chat_messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('group_id', group.id)
-          .gt('created_at', lastReadAt)
-          .neq('author_id', member.id)
-        unreadCount = count ?? 0
-      }
+  // Supabase nests the joined row under `members`. Flatten to the
+  // MemberPublic[] shape the UI expects — otherwise direct-chat title
+  // resolution (`other.name`) silently falls back to "Chat diretta".
+  const membersByGroup = new Map<string, MemberPublic[]>()
+  for (const row of (rosterRes.data ?? []) as { group_id: string; members: unknown }[]) {
+    const m = row.members as MemberPublic | null
+    if (!m) continue
+    const list = membersByGroup.get(row.group_id)
+    if (list) list.push(m)
+    else membersByGroup.set(row.group_id, [m])
+  }
 
-      // Supabase nests the joined row under `members`. Flatten to the
-      // MemberPublic[] shape the UI expects — otherwise direct-chat title
-      // resolution (`other.name`) silently falls back to "Chat diretta".
-      const flatMembers = (groupMembers ?? [])
-        .map((row: { members: unknown }) => row.members as MemberPublic | null)
-        .filter((m): m is MemberPublic => m !== null)
+  type GroupSummary = { group_id: string; last_message: unknown; unread_count: number }
+  const summaryByGroup = new Map<string, GroupSummary>()
+  for (const s of (summariesRes.data ?? []) as GroupSummary[]) {
+    summaryByGroup.set(s.group_id, s)
+  }
 
-      return {
-        ...group,
-        members: flatMembers,
-        last_message: lastMessage,
-        unread_count: unreadCount,
-      }
-    })
-  )
+  const enriched = (groups ?? []).map((group) => {
+    const summary = summaryByGroup.get(group.id)
+    return {
+      ...group,
+      members: membersByGroup.get(group.id) ?? [],
+      last_message: summary?.last_message ?? null,
+      unread_count: summary?.unread_count ?? 0,
+    }
+  })
 
   return NextResponse.json({ data: enriched, error: null })
 }
