@@ -21,15 +21,28 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ data: null, error: error.message }, { status: 500 })
   }
 
-  const enriched = await Promise.all(
-    (albums ?? []).map(async (album) => {
-      const { count } = await db
-        .from('album_photos')
-        .select('id', { count: 'exact', head: true })
-        .eq('album_id', album.id)
-      return { ...album, photo_count: count ?? 0 }
-    })
-  )
+  // Batch anti-N+1 (Affinamento A6.4): prima 1 count query PER album.
+  // PostgREST non fa GROUP BY → una sola select leggera di album_id e
+  // conteggio in JS, come comments_count in buildPostsWithDetails.
+  const albumIds = (albums ?? []).map((a) => a.id)
+  const photoCounts = new Map<string, number>()
+  if (albumIds.length > 0) {
+    const { data: photoRows, error: photosError } = await db
+      .from('album_photos')
+      .select('album_id')
+      .in('album_id', albumIds)
+    if (photosError) {
+      return NextResponse.json({ data: null, error: photosError.message }, { status: 500 })
+    }
+    for (const row of (photoRows ?? []) as { album_id: string }[]) {
+      photoCounts.set(row.album_id, (photoCounts.get(row.album_id) ?? 0) + 1)
+    }
+  }
+
+  const enriched = (albums ?? []).map((album) => ({
+    ...album,
+    photo_count: photoCounts.get(album.id) ?? 0,
+  }))
 
   return NextResponse.json({ data: enriched, error: null })
 }
